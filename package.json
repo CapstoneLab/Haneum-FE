@@ -1,7 +1,7 @@
 {
   "name": "fronte",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -11,24 +11,25 @@
     "desktop": "concurrently -k \"npm:dev:renderer\" \"npm:dev:electron\"",
     "build": "tsc -b && vite build",
     "dist": "npm run build && electron-builder",
-    "dist:win": "npm run build && electron-builder --win portable",
+    "dist:win": "npm run build && electron-builder --win nsis",
     "preview": "vite preview"
   },
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@types/node": "^22.10.2",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.1",
-    "@types/node": "^22.10.2",
     "@vitejs/plugin-react": "^4.3.3",
     "concurrently": "^9.0.1",
     "electron": "^33.2.1",
     "electron-builder": "^25.1.8",
-    "wait-on": "^8.0.1",
     "typescript": "^5.6.3",
-    "vite": "^5.4.8"
+    "vite": "^5.4.8",
+    "wait-on": "^8.0.1"
   },
   "build": {
     "appId": "com.fronte.desktop",
@@ -43,12 +44,27 @@
     ],
     "asar": true,
     "win": {
+      "signAndEditExecutable": false,
       "target": [
         {
-          "target": "portable",
-          "arch": ["x64"]
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
         }
       ]
-    }
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "Fronte-Setup-${version}.${ext}"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "moddak2",
+        "repo": "Frontend_han2"
+      }
+    ]
   }
 }
