@@ -23,7 +23,7 @@ function configureUpdater() {
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.on('checking-for-update', () => publishUpdateState({ status: 'checking', message: '최신 버전을 확인하고 있습니다.' }));
-  autoUpdater.on('update-available', (info) => publishUpdateState({ status: 'available', latestVersion: info.version, message: `Fronte ${info.version} 업데이트를 사용할 수 있습니다.` }));
+  autoUpdater.on('update-available', (info) => publishUpdateState({ status: 'available', latestVersion: info.version, message: `HAN2 DESKTOP ${info.version} 업데이트를 사용할 수 있습니다.` }));
   autoUpdater.on('update-not-available', (info) => publishUpdateState({ status: 'latest', latestVersion: info.version || app.getVersion(), percent: 0, message: '현재 최신 버전을 사용하고 있습니다.' }));
   autoUpdater.on('download-progress', (progress) => publishUpdateState({ status: 'downloading', percent: Math.round(progress.percent), message: `업데이트를 다운로드하고 있습니다. ${Math.round(progress.percent)}%` }));
   autoUpdater.on('update-downloaded', (info) => publishUpdateState({ status: 'downloaded', latestVersion: info.version, percent: 100, message: '다운로드가 완료되었습니다. 앱을 다시 시작해 설치합니다.' }));
@@ -72,7 +72,7 @@ function createWindow() {
     minWidth: 1180,
     minHeight: 760,
     backgroundColor: '#0b1020',
-    title: 'Fronte',
+    title: 'HAN2 DESKTOP',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,

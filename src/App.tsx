@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { env, useEdgeHealth } from './integration';
+import { appPlatform, platformCapabilities, platformDisplayName } from './platform/appPlatform';
 
 type View = 'overview' | 'reports' | 'data' | 'activity' | 'settings';
 type ReportStatus = '완료' | '검토 중' | '초안';
@@ -121,8 +122,10 @@ function App() {
       setScreenError('화면 공유를 시작하려면 먼저 보안채팅을 활성화하세요.');
       return;
     }
-    if (!window.frontendHan2) {
-      setScreenError('화면 공유는 Electron 데스크톱 앱에서만 사용할 수 있습니다.');
+    if (!platformCapabilities.desktopScreenShare || !window.frontendHan2) {
+      setScreenError(platformCapabilities.nativeMobile
+        ? '모바일 화면 공유는 운영체제 권한 연결 후 사용할 수 있습니다.'
+        : '화면 공유는 설치된 데스크톱 앱에서 사용할 수 있습니다.');
       return;
     }
     try {
@@ -275,7 +278,7 @@ function SettingsView(props: { theme: Theme; setTheme: (theme: Theme) => void; f
 }
 
 function UpdatePanel() {
-  const initialVersion = window.frontendHan2?.version ?? '0.1.2';
+  const initialVersion = window.frontendHan2?.version ?? '0.1.3';
   const [update, setUpdate] = useState<UpdateState>({
     status: 'idle',
     currentVersion: initialVersion,
@@ -287,7 +290,13 @@ function UpdatePanel() {
   useEffect(() => {
     const api = window.frontendHan2;
     if (!api) {
-      setUpdate((state) => ({ ...state, status: 'error', message: '업데이트 확인은 설치된 데스크톱 앱에서 사용할 수 있습니다.' }));
+      setUpdate((state) => ({
+        ...state,
+        status: 'latest',
+        message: platformCapabilities.nativeMobile
+          ? `${appPlatform === 'android' ? 'Google Play' : 'App Store'}에서 앱 업데이트를 관리합니다.`
+          : '웹 버전은 항상 최신 상태로 제공됩니다.',
+      }));
       return;
     }
     api.getUpdateState().then(setUpdate).catch(() => {});
@@ -322,18 +331,18 @@ function UpdatePanel() {
     <div className="update-icon" aria-hidden="true">↻</div>
     <div className="update-copy">
       <span className="eyebrow">SOFTWARE UPDATE</span>
-      <h2>Fronte 업데이트</h2>
+      <h2>{platformDisplayName} 업데이트</h2>
       <p>{update.message}</p>
       {update.status === 'downloading' && <div className="update-progress"><i style={{ width: `${update.percent}%` }} /></div>}
     </div>
     <div className="update-versions">
-      <span><small>현재 버전</small><strong>Fronte {update.currentVersion}</strong></span>
-      <span><small>최신 버전</small><strong>{update.latestVersion ? `Fronte ${update.latestVersion}` : '확인 필요'}</strong></span>
+      <span><small>현재 버전</small><strong>{platformDisplayName} {update.currentVersion}</strong></span>
+      <span><small>최신 버전</small><strong>{update.latestVersion ? `${platformDisplayName} ${update.latestVersion}` : '확인 필요'}</strong></span>
     </div>
     <div className="update-actions">
-      {canInstall
+      {platformCapabilities.desktopAutoUpdate && (canInstall
         ? <button className="update-primary" onClick={install}>{update.status === 'downloaded' ? '재시작 후 설치' : '업데이트하기'}</button>
-        : <button className="update-check" onClick={check} disabled={busy}>{busy ? '확인 중…' : '업데이트 확인'}</button>}
+        : <button className="update-check" onClick={check} disabled={busy}>{busy ? '확인 중…' : '업데이트 확인'}</button>)}
       {update.status === 'latest' && <small className="latest-badge">✓ 최신 버전</small>}
     </div>
   </article>;

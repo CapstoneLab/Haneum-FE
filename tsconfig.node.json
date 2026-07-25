@@ -5,6 +5,9 @@
     "moduleResolution": "Node",
     "allowSyntheticDefaultImports": true,
     "skipLibCheck": true,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "outDir": "./node_modules/.cache/tsconfig-node",
     "types": ["node"]
   },
   "include": ["vite.config.ts"]
