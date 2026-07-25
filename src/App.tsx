@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { PluginListenerHandle } from '@capacitor/core';
 import { env, useEdgeHealth } from './integration';
 import { appPlatform, platformCapabilities, platformDisplayName } from './platform/appPlatform';
+import { ScreenCapture } from './platform/screenCapture';
 
 type View = 'overview' | 'reports' | 'data' | 'activity' | 'settings';
 type ReportStatus = '완료' | '검토 중' | '초안';
@@ -66,6 +68,7 @@ function App() {
   });
   const [securityEnabled, setSecurityEnabled] = useState(() => window.localStorage.getItem('han2-security') === 'on');
   const [showSecurityConsent, setShowSecurityConsent] = useState(() => window.localStorage.getItem('han2-security-consent') !== 'completed');
+  const [screenCaptureAllowed, setScreenCaptureAllowed] = useState(() => window.localStorage.getItem('han2-screen-capture-consent') === 'on');
   const [view, setView] = useState<View>('overview');
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<'전체' | ReportStatus>('전체');
@@ -76,9 +79,13 @@ function App() {
   const [screenSources, setScreenSources] = useState<ScreenSource[]>([]);
   const [showScreenPicker, setShowScreenPicker] = useState(false);
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
+  const [mobileScreenFrame, setMobileScreenFrame] = useState('');
+  const [mobileScreenSharing, setMobileScreenSharing] = useState(false);
   const [sharedSourceName, setSharedSourceName] = useState('');
   const [screenError, setScreenError] = useState('');
   const previewRef = useRef<HTMLVideoElement>(null);
+  const screenFrameListenerRef = useRef<PluginListenerHandle | null>(null);
+  const screenStoppedListenerRef = useRef<PluginListenerHandle | null>(null);
   const selected = reports.find((report) => report.id === selectedId) ?? reports[0];
   const filtered = useMemo(() => reports.filter((report) => {
     const query = search.trim().toLowerCase();
@@ -122,9 +129,41 @@ function App() {
       setScreenError('화면 공유를 시작하려면 먼저 보안채팅을 활성화하세요.');
       return;
     }
+    if (appPlatform === 'android') {
+      if (!screenCaptureAllowed) {
+        const allowed = window.confirm('HAN2가 내 화면을 캡처해 화면 분석에 사용하도록 허용할까요? 설정에서 언제든 끌 수 있습니다.');
+        if (!allowed) {
+          setScreenError('화면 캡처 사용이 허용되지 않았습니다.');
+          return;
+        }
+        setScreenCaptureAllowed(true);
+        window.localStorage.setItem('han2-screen-capture-consent', 'on');
+      }
+      try {
+        await screenFrameListenerRef.current?.remove();
+        await screenStoppedListenerRef.current?.remove();
+        screenFrameListenerRef.current = await ScreenCapture.addListener('screenFrame', ({ dataUrl }) => {
+          setMobileScreenFrame(dataUrl);
+        });
+        screenStoppedListenerRef.current = await ScreenCapture.addListener('screenStopped', () => {
+          setMobileScreenSharing(false);
+          setMobileScreenFrame('');
+          setSharedSourceName('');
+        });
+        await ScreenCapture.start();
+        setMobileScreenSharing(true);
+        setSharedSourceName('내 Android 화면');
+        return;
+      } catch (error) {
+        setMobileScreenSharing(false);
+        setMobileScreenFrame('');
+        setScreenError(error instanceof Error ? error.message : 'Android 화면 공유 권한을 받지 못했습니다.');
+        return;
+      }
+    }
     if (!platformCapabilities.desktopScreenShare || !window.frontendHan2) {
       setScreenError(platformCapabilities.nativeMobile
-        ? '모바일 화면 공유는 운영체제 권한 연결 후 사용할 수 있습니다.'
+        ? '이 모바일 운영체제에서는 아직 화면 공유를 지원하지 않습니다.'
         : '화면 공유는 설치된 데스크톱 앱에서 사용할 수 있습니다.');
       return;
     }
@@ -139,7 +178,14 @@ function App() {
 
   const stopScreenShare = () => {
     screenStream?.getTracks().forEach((track) => track.stop());
+    if (mobileScreenSharing) void ScreenCapture.stop();
+    void screenFrameListenerRef.current?.remove();
+    void screenStoppedListenerRef.current?.remove();
+    screenFrameListenerRef.current = null;
+    screenStoppedListenerRef.current = null;
     setScreenStream(null);
+    setMobileScreenSharing(false);
+    setMobileScreenFrame('');
     setSharedSourceName('');
   };
 
@@ -173,6 +219,12 @@ function App() {
     setShowSecurityConsent(false);
   };
 
+  const changeScreenCaptureAllowed = (allowed: boolean) => {
+    setScreenCaptureAllowed(allowed);
+    window.localStorage.setItem('han2-screen-capture-consent', allowed ? 'on' : 'off');
+    if (!allowed) stopScreenShare();
+  };
+
   return (
     <div className="app-shell" data-theme={theme} data-font-size={fontSize}>
       <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
@@ -195,11 +247,11 @@ function App() {
 
         <div className="content">
           <section className="page-heading"><div><span className="eyebrow">{content.eyebrow}</span><h1>{content.title}</h1><p>{content.description}</p></div><div className="today"><span>오늘</span><strong>2026. 07. 21</strong></div></section>
-          {view === 'overview' && <Overview onOpenReports={() => changeView('reports')} selected={selected} securityEnabled={securityEnabled} setSecurityEnabled={setSecurityEnabled} screenStream={screenStream} sharedSourceName={sharedSourceName} previewRef={previewRef} onStartScreenShare={openScreenPicker} onStopScreenShare={stopScreenShare} screenError={screenError} />}
+          {view === 'overview' && <Overview onOpenReports={() => changeView('reports')} selected={selected} securityEnabled={securityEnabled} setSecurityEnabled={setSecurityEnabled} screenStream={screenStream} mobileScreenFrame={mobileScreenFrame} mobileScreenSharing={mobileScreenSharing} sharedSourceName={sharedSourceName} previewRef={previewRef} onStartScreenShare={openScreenPicker} onStopScreenShare={stopScreenShare} screenError={screenError} />}
           {view === 'reports' && <ReportsPage reports={filtered} selected={selected} search={search} status={status} setSearch={setSearch} setStatus={setStatus} setSelectedId={setSelectedId} />}
           {view === 'data' && <DataMap />}
           {view === 'activity' && <ActivityPage />}
-          {view === 'settings' && <SettingsView theme={theme} setTheme={setTheme} fontSize={fontSize} setFontSize={setFontSize} />}
+          {view === 'settings' && <SettingsView theme={theme} setTheme={setTheme} fontSize={fontSize} setFontSize={setFontSize} screenCaptureAllowed={screenCaptureAllowed} setScreenCaptureAllowed={changeScreenCaptureAllowed} />}
         </div>
 
         <footer className="statusbar"><span><i className={securityEnabled ? 'online' : 'offline'} /> Security {securityEnabled ? 'ON' : 'OFF'}</span><span>분석 서버 <b>{env.useMocks ? 'Mock' : edgeHealth.isDegraded ? 'Local fallback' : 'Online'}</b></span><span>화면 <b>{navigation.find((item) => item.key === view)?.label}</b></span><span>채팅 모드 <b>{securityEnabled ? '보안 채팅' : '일반 채팅'}</b></span><span>필터 <b>{status}</b></span><span>선택 <b>{selected.id}</b></span></footer>
@@ -214,7 +266,8 @@ function SecurityConsent({ onChoose }: { onChoose: (allowed: boolean) => void })
   return <div className="consent-backdrop" role="presentation"><section className="consent-dialog" role="dialog" aria-modal="true" aria-labelledby="consent-title" aria-describedby="consent-description"><span className="consent-mark">H</span><span className="consent-kicker">WELCOME TO HAN2</span><h2 id="consent-title">채팅 보안 기능을<br />실행할까요?</h2><p id="consent-description">보안 기능을 허용하면 채팅 중 개인정보와 사기 위험을 확인하고 필요한 피드백과 보호 알림을 제공합니다.</p><div className="consent-points"><span><i>✓</i><b>위험 메시지 실시간 감지</b></span><span><i>✓</i><b>안전한 채팅을 위한 피드백</b></span><span><i>✓</i><b>필요한 순간 보호 알림</b></span></div><div className="consent-notice"><i>i</i><span>지금 선택한 설정은 메인 화면에서 언제든지 변경할 수 있습니다.</span></div><div className="consent-actions"><button className="deny" onClick={() => onChoose(false)}>허용하지 않음</button><button className="allow" onClick={() => onChoose(true)}><span>✓</span> 허용하고 시작</button></div><small>선택하기 전까지 보안 기능은 실행되지 않습니다.</small></section></div>;
 }
 
-function Overview({ onOpenReports, selected, securityEnabled, setSecurityEnabled, screenStream, sharedSourceName, previewRef, onStartScreenShare, onStopScreenShare, screenError }: { onOpenReports: () => void; selected: Report; securityEnabled: boolean; setSecurityEnabled: (enabled: boolean) => void; screenStream: MediaStream | null; sharedSourceName: string; previewRef: React.RefObject<HTMLVideoElement>; onStartScreenShare: () => void; onStopScreenShare: () => void; screenError: string }) {
+function Overview({ onOpenReports, selected, securityEnabled, setSecurityEnabled, screenStream, mobileScreenFrame, mobileScreenSharing, sharedSourceName, previewRef, onStartScreenShare, onStopScreenShare, screenError }: { onOpenReports: () => void; selected: Report; securityEnabled: boolean; setSecurityEnabled: (enabled: boolean) => void; screenStream: MediaStream | null; mobileScreenFrame: string; mobileScreenSharing: boolean; sharedSourceName: string; previewRef: React.RefObject<HTMLVideoElement>; onStartScreenShare: () => void; onStopScreenShare: () => void; screenError: string }) {
+  const isScreenSharing = Boolean(screenStream) || mobileScreenSharing;
   const metrics = [
     { label: '전체 보고서', value: '24', change: '+3 이번 달', icon: '▤', tone: 'blue' },
     { label: '검토 대기', value: '07', change: '2개 긴급', icon: '◷', tone: 'amber' },
@@ -227,20 +280,20 @@ function Overview({ onOpenReports, selected, securityEnabled, setSecurityEnabled
       <div className="security-actions"><span className="mode-state"><i />{securityEnabled ? 'Protection active' : 'Protection paused'}</span><div className="power-switch" role="group" aria-label="채팅 보안 모드"><button className={securityEnabled ? 'active' : ''} onClick={() => setSecurityEnabled(true)}>ON</button><button className={!securityEnabled ? 'active' : ''} onClick={() => setSecurityEnabled(false)}>OFF</button></div></div>
       <div className="security-features"><span className={securityEnabled ? 'active' : ''}><i>◉</i><b>위험 감지</b><small>{securityEnabled ? '실시간 분석 중' : '사용 안 함'}</small></span><span className={securityEnabled ? 'active' : ''}><i>✦</i><b>채팅 피드백</b><small>{securityEnabled ? '피드백 활성화' : '사용 안 함'}</small></span><span className={securityEnabled ? 'active' : ''}><i>♢</i><b>보호 알림</b><small>{securityEnabled ? '알림 대기 중' : '사용 안 함'}</small></span></div>
     </section>
-    <section className={`screen-share-panel panel ${screenStream ? 'sharing' : ''}`}>
+    <section className={`screen-share-panel panel ${isScreenSharing ? 'sharing' : ''}`}>
       <div className="screen-share-copy">
         <span className="eyebrow">LIVE SCREEN</span>
-        <h2>{screenStream ? '화면 공유 중' : '실시간 화면 분석 준비'}</h2>
-        <p>{screenStream ? `${sharedSourceName} 화면을 앱 내부에서 미리 보고 있습니다. 현재 외부 전송이나 AI 분석은 하지 않습니다.` : '공유할 화면이나 창을 직접 선택하세요. 공유 중에는 언제든 즉시 중지할 수 있습니다.'}</p>
+        <h2>{isScreenSharing ? '화면 공유 중' : '실시간 화면 분석 준비'}</h2>
+        <p>{isScreenSharing ? `${sharedSourceName}을 앱 내부에서 미리 보고 있습니다. 현재 외부 전송이나 AI 분석은 하지 않습니다.` : '공유할 화면이나 창을 직접 선택하세요. 공유 중에는 언제든 즉시 중지할 수 있습니다.'}</p>
         {screenError && <strong className="screen-error">{screenError}</strong>}
         <div className="screen-share-actions">
-          {!screenStream && <button className="screen-start" onClick={onStartScreenShare} disabled={!securityEnabled}>화면 선택 및 공유 시작</button>}
-          {screenStream && <button className="screen-stop" onClick={onStopScreenShare}>공유 중지</button>}
-          <span><i className={screenStream ? 'live' : ''} />{screenStream ? '화면 캡처 활성' : securityEnabled ? '공유 대기 중' : '보안채팅을 먼저 켜세요'}</span>
+          {!isScreenSharing && <button className="screen-start" onClick={onStartScreenShare} disabled={!securityEnabled}>{appPlatform === 'android' ? '내 화면 공유 시작' : '화면 선택 및 공유 시작'}</button>}
+          {isScreenSharing && <button className="screen-stop" onClick={onStopScreenShare}>공유 중지</button>}
+          <span><i className={isScreenSharing ? 'live' : ''} />{isScreenSharing ? '화면 캡처 활성' : securityEnabled ? '공유 대기 중' : '보안채팅을 먼저 켜세요'}</span>
         </div>
       </div>
       <div className="screen-preview">
-        {screenStream ? <video ref={previewRef} autoPlay muted playsInline /> : <div><b>화면 미리보기</b><span>선택한 화면이 여기에 표시됩니다.</span></div>}
+        {screenStream ? <video ref={previewRef} autoPlay muted playsInline /> : mobileScreenFrame ? <img src={mobileScreenFrame} alt="공유 중인 내 Android 화면" /> : <div><b>화면 미리보기</b><span>선택한 화면이 여기에 표시됩니다.</span></div>}
       </div>
     </section>
     <section className="metrics">{metrics.map((metric) => <article key={metric.label} className={`metric ${metric.tone}`}><div><span>{metric.label}</span><strong>{metric.value}</strong><small>{metric.change}</small></div><i>{metric.icon}</i></article>)}</section>
@@ -273,18 +326,19 @@ function DataMap() { return <section className="data-layout"><article className=
 
 function ActivityPage() { return <section className="panel timeline-panel"><div className="timeline-date">2026년 7월 21일 <span>오늘</span></div>{activities.map((item) => <Activity key={item.title} {...item} expanded />)}<div className="timeline-date muted">2026년 7월 20일</div>{activities.slice(1).reverse().map((item) => <Activity key={`old-${item.title}`} {...item} time="어제" expanded />)}</section> }
 
-function SettingsView(props: { theme: Theme; setTheme: (theme: Theme) => void; fontSize: FontSize; setFontSize: (size: FontSize) => void }) {
+function SettingsView(props: { theme: Theme; setTheme: (theme: Theme) => void; fontSize: FontSize; setFontSize: (size: FontSize) => void; screenCaptureAllowed: boolean; setScreenCaptureAllowed: (allowed: boolean) => void }) {
   return <div className="settings-view"><UpdatePanel /><SettingsPage {...props} /></div>;
 }
 
 function UpdatePanel() {
-  const initialVersion = window.frontendHan2?.version ?? '0.1.3';
+  const initialVersion = window.frontendHan2?.version ?? '0.1.4';
   const [update, setUpdate] = useState<UpdateState>({
     status: 'idle',
     currentVersion: initialVersion,
     latestVersion: null,
     percent: 0,
     message: '최신 버전을 확인해 주세요.',
+    releaseNotes: '',
   });
 
   useEffect(() => {
@@ -333,6 +387,7 @@ function UpdatePanel() {
       <span className="eyebrow">SOFTWARE UPDATE</span>
       <h2>{platformDisplayName} 업데이트</h2>
       <p>{update.message}</p>
+      {update.releaseNotes && <div className="update-release-notes"><strong>업데이트 내용</strong><p>{update.releaseNotes}</p></div>}
       {update.status === 'downloading' && <div className="update-progress"><i style={{ width: `${update.percent}%` }} /></div>}
     </div>
     <div className="update-versions">
@@ -348,7 +403,7 @@ function UpdatePanel() {
   </article>;
 }
 
-function SettingsPage({ theme, setTheme, fontSize, setFontSize }: { theme: Theme; setTheme: (theme: Theme) => void; fontSize: FontSize; setFontSize: (size: FontSize) => void }) { const [options, setOptions] = useState([true, true, false]); const fontOptions: { key: FontSize; label: string; sample: string }[] = [{ key: 'small', label: '작게', sample: '가' }, { key: 'medium', label: '기본', sample: '가' }, { key: 'large', label: '크게', sample: '가' }]; return <section className="settings-grid"><div className="settings-column"><article className="panel theme-panel"><PanelHead label="APPEARANCE" title="화면 테마" /><p>눈에 편한 화면 모드를 선택하세요. 설정은 다음 실행에도 유지됩니다.</p><div className="theme-options"><button className={theme === 'light' ? 'selected' : ''} onClick={() => setTheme('light')}><span className="theme-preview light-preview"><i /><b /><b /></span><span><strong>화이트 모드</strong><small>밝고 선명한 기본 화면</small></span><i className="radio" /></button><button className={theme === 'dark' ? 'selected' : ''} onClick={() => setTheme('dark')}><span className="theme-preview dark-preview"><i /><b /><b /></span><span><strong>다크 모드</strong><small>빛이 적은 편안한 화면</small></span><i className="radio" /></button></div></article><article className="panel font-panel"><PanelHead label="READABILITY" title="글자 크기" /><p>화면에서 가장 편하게 읽히는 크기를 선택하세요.</p><div className="font-options">{fontOptions.map((option) => <button key={option.key} className={fontSize === option.key ? `selected ${option.key}` : option.key} onClick={() => setFontSize(option.key)}><b>{option.sample}</b><span>{option.label}</span><i /></button>)}</div><div className="font-sample"><span>미리보기</span><strong>프로젝트의 중요한 변화를 한눈에 확인하세요.</strong></div></article><article className="panel setting-panel"><PanelHead label="GENERAL" title="일반 설정" />{['Mock data mode', 'Responsive layout', '상태 변경 알림'].map((label, index) => <button key={label} onClick={() => setOptions(options.map((value, i) => i === index ? !value : value))}><span><strong>{label}</strong><small>{index === 0 ? '샘플 데이터로 화면을 구성합니다.' : index === 1 ? '화면 크기에 맞춰 레이아웃을 조정합니다.' : '보고서 상태가 바뀌면 알려드립니다.'}</small></span><i className={options[index] ? 'on' : ''} /></button>)}</article></div><article className="panel environment-card"><PanelHead label="ENVIRONMENT" title="연동 환경" /><dl><div><dt>Theme</dt><dd>{theme === 'light' ? 'White' : 'Dark'}</dd></div><div><dt>Font size</dt><dd>{fontSize === 'small' ? 'Small' : fontSize === 'large' ? 'Large' : 'Default'}</dd></div><div><dt>Mode</dt><dd>Development</dd></div><div><dt>API Version</dt><dd>v1 draft</dd></div><div><dt>Last sync</dt><dd>아직 연결되지 않음</dd></div><div><dt>Contract</dt><dd className="success-text">Ready</dd></div></dl><button className="outline-action">연동 설정 확인</button></article></section> }
+function SettingsPage({ theme, setTheme, fontSize, setFontSize, screenCaptureAllowed, setScreenCaptureAllowed }: { theme: Theme; setTheme: (theme: Theme) => void; fontSize: FontSize; setFontSize: (size: FontSize) => void; screenCaptureAllowed: boolean; setScreenCaptureAllowed: (allowed: boolean) => void }) { const [options, setOptions] = useState([true, true, false]); const fontOptions: { key: FontSize; label: string; sample: string }[] = [{ key: 'small', label: '작게', sample: '가' }, { key: 'medium', label: '기본', sample: '가' }, { key: 'large', label: '크게', sample: '가' }]; return <section className="settings-grid"><div className="settings-column"><article className="panel theme-panel"><PanelHead label="APPEARANCE" title="화면 테마" /><p>눈에 편한 화면 모드를 선택하세요. 설정은 다음 실행에도 유지됩니다.</p><div className="theme-options"><button className={theme === 'light' ? 'selected' : ''} onClick={() => setTheme('light')}><span className="theme-preview light-preview"><i /><b /><b /></span><span><strong>화이트 모드</strong><small>밝고 선명한 기본 화면</small></span><i className="radio" /></button><button className={theme === 'dark' ? 'selected' : ''} onClick={() => setTheme('dark')}><span className="theme-preview dark-preview"><i /><b /><b /></span><span><strong>다크 모드</strong><small>빛이 적은 편안한 화면</small></span><i className="radio" /></button></div></article><article className="panel font-panel"><PanelHead label="READABILITY" title="글자 크기" /><p>화면에서 가장 편하게 읽히는 크기를 선택하세요.</p><div className="font-options">{fontOptions.map((option) => <button key={option.key} className={fontSize === option.key ? `selected ${option.key}` : option.key} onClick={() => setFontSize(option.key)}><b>{option.sample}</b><span>{option.label}</span><i /></button>)}</div><div className="font-sample"><span>미리보기</span><strong>프로젝트의 중요한 변화를 한눈에 확인하세요.</strong></div></article><article className="panel setting-panel"><PanelHead label="GENERAL" title="일반 설정" /><button onClick={() => setScreenCaptureAllowed(!screenCaptureAllowed)}><span><strong>화면 캡처 동의</strong><small>{screenCaptureAllowed ? 'HAN2의 화면 캡처 기능 사용을 허용했습니다.' : '화면 공유를 시작할 때 먼저 사용 동의를 확인합니다.'}</small></span><i className={screenCaptureAllowed ? 'on' : ''} /></button>{['Mock data mode', 'Responsive layout', '상태 변경 알림'].map((label, index) => <button key={label} onClick={() => setOptions(options.map((value, i) => i === index ? !value : value))}><span><strong>{label}</strong><small>{index === 0 ? '샘플 데이터로 화면을 구성합니다.' : index === 1 ? '화면 크기에 맞춰 레이아웃을 조정합니다.' : '보고서 상태가 바뀌면 알려드립니다.'}</small></span><i className={options[index] ? 'on' : ''} /></button>)}</article></div><article className="panel environment-card"><PanelHead label="ENVIRONMENT" title="연동 환경" /><dl><div><dt>Theme</dt><dd>{theme === 'light' ? 'White' : 'Dark'}</dd></div><div><dt>Font size</dt><dd>{fontSize === 'small' ? 'Small' : fontSize === 'large' ? 'Large' : 'Default'}</dd></div><div><dt>Mode</dt><dd>Development</dd></div><div><dt>API Version</dt><dd>v1 draft</dd></div><div><dt>Last sync</dt><dd>아직 연결되지 않음</dd></div><div><dt>Contract</dt><dd className="success-text">Ready</dd></div></dl><button className="outline-action">연동 설정 확인</button></article></section> }
 
 function PanelHead({ label, title, action, onAction }: { label: string; title: string; action?: string; onAction?: () => void }) { return <header className="panel-head"><div><span>{label}</span><h2>{title}</h2></div>{action && <button onClick={onAction}>{action} <b>→</b></button>}</header> }
 function StatusBadge({ status }: { status: ReportStatus }) { return <span className={`status-badge ${status === '완료' ? 'complete' : status === '검토 중' ? 'review' : 'draft'}`}><i />{status}</span> }

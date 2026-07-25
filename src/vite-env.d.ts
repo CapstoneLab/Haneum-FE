@@ -14,6 +14,7 @@ type UpdateState = {
   latestVersion: string | null;
   percent: number;
   message: string;
+  releaseNotes: string;
 };
 
 interface Window {

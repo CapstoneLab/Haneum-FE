@@ -26,6 +26,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Validate tag and app version
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          $tag = "${{ github.ref_name }}"
+          if ($tag -notmatch [regex]::Escape($version)) {
+            throw "Tag '$tag' does not match package version '$version'."
+          }
+
       - name: Build Windows release
         run: npm run dist:win
 
@@ -44,4 +53,5 @@ jobs:
             release/*.yml
             release/*.blockmap
           name: "Fronte ${{ steps.app.outputs.version }}"
-          generate_release_notes: true
+          body_path: release-notes.md
+          generate_release_notes: false

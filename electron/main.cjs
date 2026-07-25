@@ -10,7 +10,16 @@ let updateState = {
   latestVersion: null,
   percent: 0,
   message: '업데이트를 확인할 수 있습니다.',
+  releaseNotes: '',
 };
+
+function normalizeReleaseNotes(releaseNotes) {
+  if (typeof releaseNotes === 'string') return releaseNotes;
+  if (Array.isArray(releaseNotes)) {
+    return releaseNotes.map((note) => note.note || '').filter(Boolean).join('\n\n');
+  }
+  return '';
+}
 
 function publishUpdateState(patch) {
   updateState = { ...updateState, ...patch };
@@ -23,10 +32,10 @@ function configureUpdater() {
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.on('checking-for-update', () => publishUpdateState({ status: 'checking', message: '최신 버전을 확인하고 있습니다.' }));
-  autoUpdater.on('update-available', (info) => publishUpdateState({ status: 'available', latestVersion: info.version, message: `HAN2 DESKTOP ${info.version} 업데이트를 사용할 수 있습니다.` }));
+  autoUpdater.on('update-available', (info) => publishUpdateState({ status: 'available', latestVersion: info.version, message: `HAN2 DESKTOP ${info.version} 업데이트를 사용할 수 있습니다.`, releaseNotes: normalizeReleaseNotes(info.releaseNotes) }));
   autoUpdater.on('update-not-available', (info) => publishUpdateState({ status: 'latest', latestVersion: info.version || app.getVersion(), percent: 0, message: '현재 최신 버전을 사용하고 있습니다.' }));
   autoUpdater.on('download-progress', (progress) => publishUpdateState({ status: 'downloading', percent: Math.round(progress.percent), message: `업데이트를 다운로드하고 있습니다. ${Math.round(progress.percent)}%` }));
-  autoUpdater.on('update-downloaded', (info) => publishUpdateState({ status: 'downloaded', latestVersion: info.version, percent: 100, message: '다운로드가 완료되었습니다. 앱을 다시 시작해 설치합니다.' }));
+  autoUpdater.on('update-downloaded', (info) => publishUpdateState({ status: 'downloaded', latestVersion: info.version, percent: 100, message: '다운로드가 완료되었습니다. 앱을 다시 시작해 설치합니다.', releaseNotes: normalizeReleaseNotes(info.releaseNotes) || updateState.releaseNotes }));
   autoUpdater.on('error', (error) => publishUpdateState({ status: 'error', message: `업데이트를 확인하지 못했습니다: ${error.message}` }));
 }
 
