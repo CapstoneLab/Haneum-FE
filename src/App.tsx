@@ -196,7 +196,7 @@ function App() {
           {view === 'reports' && <ReportsPage reports={filtered} selected={selected} search={search} status={status} setSearch={setSearch} setStatus={setStatus} setSelectedId={setSelectedId} />}
           {view === 'data' && <DataMap />}
           {view === 'activity' && <ActivityPage />}
-          {view === 'settings' && <SettingsPage theme={theme} setTheme={setTheme} fontSize={fontSize} setFontSize={setFontSize} />}
+          {view === 'settings' && <SettingsView theme={theme} setTheme={setTheme} fontSize={fontSize} setFontSize={setFontSize} />}
         </div>
 
         <footer className="statusbar"><span><i className={securityEnabled ? 'online' : 'offline'} /> Security {securityEnabled ? 'ON' : 'OFF'}</span><span>분석 서버 <b>{env.useMocks ? 'Mock' : edgeHealth.isDegraded ? 'Local fallback' : 'Online'}</b></span><span>화면 <b>{navigation.find((item) => item.key === view)?.label}</b></span><span>채팅 모드 <b>{securityEnabled ? '보안 채팅' : '일반 채팅'}</b></span><span>필터 <b>{status}</b></span><span>선택 <b>{selected.id}</b></span></footer>
@@ -269,6 +269,75 @@ function ReportsPage({ reports: visible, selected, search, status, setSearch, se
 function DataMap() { return <section className="data-layout"><article className="panel endpoint-panel"><PanelHead label="ENDPOINTS" title="API 연결 지점" /><div className="endpoint-list">{endpoints.map((endpoint) => <div key={`${endpoint.method}-${endpoint.path}`}><b>{endpoint.method}</b><code>{endpoint.path}</code><span>{endpoint.description}</span><i className={endpoint.state.toLowerCase()}>{endpoint.state}</i></div>)}</div></article><article className="panel schema-panel"><PanelHead label="RESPONSE MODEL" title="위험 분석 응답 계약" /><pre><span>{'{'}</span>{'\n  '}<b>"risk_level"</b>: <em>"safe | caution | danger"</em>,{'\n  '}<b>"risk_score"</b>: <i>0.82</i>,{'\n  '}<b>"recommended_action"</b>: <em>"block_and_confirm"</em>,{'\n  '}<b>"detected_personal_info"</b>: [],{'\n  '}<b>"detected_fraud_patterns"</b>: [],{'\n  '}<b>"analysis_meta"</b>: {'{'} <b>"analysis_source"</b>: <em>"edge"</em> {'}'}{'\n'}<span>{'}'}</span></pre></article></section> }
 
 function ActivityPage() { return <section className="panel timeline-panel"><div className="timeline-date">2026년 7월 21일 <span>오늘</span></div>{activities.map((item) => <Activity key={item.title} {...item} expanded />)}<div className="timeline-date muted">2026년 7월 20일</div>{activities.slice(1).reverse().map((item) => <Activity key={`old-${item.title}`} {...item} time="어제" expanded />)}</section> }
+
+function SettingsView(props: { theme: Theme; setTheme: (theme: Theme) => void; fontSize: FontSize; setFontSize: (size: FontSize) => void }) {
+  return <div className="settings-view"><UpdatePanel /><SettingsPage {...props} /></div>;
+}
+
+function UpdatePanel() {
+  const initialVersion = window.frontendHan2?.version ?? '0.1.1';
+  const [update, setUpdate] = useState<UpdateState>({
+    status: 'idle',
+    currentVersion: initialVersion,
+    latestVersion: null,
+    percent: 0,
+    message: '최신 버전을 확인해 주세요.',
+  });
+
+  useEffect(() => {
+    const api = window.frontendHan2;
+    if (!api) {
+      setUpdate((state) => ({ ...state, status: 'error', message: '업데이트 확인은 설치된 데스크톱 앱에서 사용할 수 있습니다.' }));
+      return;
+    }
+    api.getUpdateState().then(setUpdate).catch(() => {});
+    const unsubscribe = api.onUpdateState(setUpdate);
+    return unsubscribe;
+  }, []);
+
+  const check = async () => {
+    const api = window.frontendHan2;
+    if (!api) return;
+    setUpdate((state) => ({ ...state, status: 'checking', message: '최신 버전을 확인하고 있습니다.' }));
+    try {
+      setUpdate(await api.checkForUpdates());
+    } catch {
+      setUpdate((state) => ({ ...state, status: 'error', message: '업데이트 서버에 연결하지 못했습니다.' }));
+    }
+  };
+
+  const install = async () => {
+    const api = window.frontendHan2;
+    if (!api) return;
+    try {
+      await api.installUpdate();
+    } catch {
+      setUpdate((state) => ({ ...state, status: 'error', message: '업데이트 다운로드 또는 설치에 실패했습니다.' }));
+    }
+  };
+
+  const busy = update.status === 'checking' || update.status === 'downloading';
+  const canInstall = update.status === 'available' || update.status === 'downloaded';
+  return <article className={`panel update-panel ${canInstall ? 'has-update' : ''}`}>
+    <div className="update-icon" aria-hidden="true">↻</div>
+    <div className="update-copy">
+      <span className="eyebrow">SOFTWARE UPDATE</span>
+      <h2>Fronte 업데이트</h2>
+      <p>{update.message}</p>
+      {update.status === 'downloading' && <div className="update-progress"><i style={{ width: `${update.percent}%` }} /></div>}
+    </div>
+    <div className="update-versions">
+      <span><small>현재 버전</small><strong>Fronte {update.currentVersion}</strong></span>
+      <span><small>최신 버전</small><strong>{update.latestVersion ? `Fronte ${update.latestVersion}` : '확인 필요'}</strong></span>
+    </div>
+    <div className="update-actions">
+      {canInstall
+        ? <button className="update-primary" onClick={install}>{update.status === 'downloaded' ? '재시작 후 설치' : '업데이트하기'}</button>
+        : <button className="update-check" onClick={check} disabled={busy}>{busy ? '확인 중…' : '업데이트 확인'}</button>}
+      {update.status === 'latest' && <small className="latest-badge">✓ 최신 버전</small>}
+    </div>
+  </article>;
+}
 
 function SettingsPage({ theme, setTheme, fontSize, setFontSize }: { theme: Theme; setTheme: (theme: Theme) => void; fontSize: FontSize; setFontSize: (size: FontSize) => void }) { const [options, setOptions] = useState([true, true, false]); const fontOptions: { key: FontSize; label: string; sample: string }[] = [{ key: 'small', label: '작게', sample: '가' }, { key: 'medium', label: '기본', sample: '가' }, { key: 'large', label: '크게', sample: '가' }]; return <section className="settings-grid"><div className="settings-column"><article className="panel theme-panel"><PanelHead label="APPEARANCE" title="화면 테마" /><p>눈에 편한 화면 모드를 선택하세요. 설정은 다음 실행에도 유지됩니다.</p><div className="theme-options"><button className={theme === 'light' ? 'selected' : ''} onClick={() => setTheme('light')}><span className="theme-preview light-preview"><i /><b /><b /></span><span><strong>화이트 모드</strong><small>밝고 선명한 기본 화면</small></span><i className="radio" /></button><button className={theme === 'dark' ? 'selected' : ''} onClick={() => setTheme('dark')}><span className="theme-preview dark-preview"><i /><b /><b /></span><span><strong>다크 모드</strong><small>빛이 적은 편안한 화면</small></span><i className="radio" /></button></div></article><article className="panel font-panel"><PanelHead label="READABILITY" title="글자 크기" /><p>화면에서 가장 편하게 읽히는 크기를 선택하세요.</p><div className="font-options">{fontOptions.map((option) => <button key={option.key} className={fontSize === option.key ? `selected ${option.key}` : option.key} onClick={() => setFontSize(option.key)}><b>{option.sample}</b><span>{option.label}</span><i /></button>)}</div><div className="font-sample"><span>미리보기</span><strong>프로젝트의 중요한 변화를 한눈에 확인하세요.</strong></div></article><article className="panel setting-panel"><PanelHead label="GENERAL" title="일반 설정" />{['Mock data mode', 'Responsive layout', '상태 변경 알림'].map((label, index) => <button key={label} onClick={() => setOptions(options.map((value, i) => i === index ? !value : value))}><span><strong>{label}</strong><small>{index === 0 ? '샘플 데이터로 화면을 구성합니다.' : index === 1 ? '화면 크기에 맞춰 레이아웃을 조정합니다.' : '보고서 상태가 바뀌면 알려드립니다.'}</small></span><i className={options[index] ? 'on' : ''} /></button>)}</article></div><article className="panel environment-card"><PanelHead label="ENVIRONMENT" title="연동 환경" /><dl><div><dt>Theme</dt><dd>{theme === 'light' ? 'White' : 'Dark'}</dd></div><div><dt>Font size</dt><dd>{fontSize === 'small' ? 'Small' : fontSize === 'large' ? 'Large' : 'Default'}</dd></div><div><dt>Mode</dt><dd>Development</dd></div><div><dt>API Version</dt><dd>v1 draft</dd></div><div><dt>Last sync</dt><dd>아직 연결되지 않음</dd></div><div><dt>Contract</dt><dd className="success-text">Ready</dd></div></dl><button className="outline-action">연동 설정 확인</button></article></section> }
 
