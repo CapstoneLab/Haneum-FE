@@ -275,7 +275,7 @@ function SettingsView(props: { theme: Theme; setTheme: (theme: Theme) => void; f
 }
 
 function UpdatePanel() {
-  const initialVersion = window.frontendHan2?.version ?? '0.1.1';
+  const initialVersion = window.frontendHan2?.version ?? '0.1.2';
   const [update, setUpdate] = useState<UpdateState>({
     status: 'idle',
     currentVersion: initialVersion,

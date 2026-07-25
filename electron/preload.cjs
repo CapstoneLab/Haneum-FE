@@ -2,7 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('frontendHan2', {
   appName: 'Fronte',
-  version: '0.1.1',
+  version: '0.1.2',
   getScreenSources: () => ipcRenderer.invoke('screen:get-sources'),
   getUpdateState: () => ipcRenderer.invoke('update:get-state'),
   checkForUpdates: () => ipcRenderer.invoke('update:check'),

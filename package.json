@@ -1,7 +1,7 @@
 {
   "name": "fronte",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -11,7 +11,7 @@
     "desktop": "concurrently -k \"npm:dev:renderer\" \"npm:dev:electron\"",
     "build": "tsc -b && vite build",
     "dist": "npm run build && electron-builder",
-    "dist:win": "npm run build && electron-builder --win nsis",
+    "dist:win": "npm run build && electron-builder --win nsis --publish never",
     "preview": "vite preview"
   },
   "dependencies": {
