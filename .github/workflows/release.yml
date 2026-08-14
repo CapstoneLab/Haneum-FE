@@ -1,57 +1,76 @@
-name: Release
+name: Android Release
 
 on:
   push:
     tags:
       - 'TEST-*'
-      - 'Fronte-*'
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
   build-and-release:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Validate tag and app version
-        shell: pwsh
-        run: |
-          $version = (Get-Content package.json | ConvertFrom-Json).version
-          $tag = "${{ github.ref_name }}"
-          if ($tag -notmatch [regex]::Escape($version)) {
-            throw "Tag '$tag' does not match package version '$version'."
-          }
-
-      - name: Build Windows release
-        run: npm run dist:win
-
-      - name: Read app version
+      - name: Read and validate app version
         id: app
         shell: pwsh
         run: |
-          $version = (Get-Content package.json | ConvertFrom-Json).version
-          "version=$version" >> $env:GITHUB_OUTPUT
+          $packageVersion = (Get-Content package.json | ConvertFrom-Json).version
+          $androidVersion = Select-String -Path android/app/build.gradle -Pattern 'versionName\s+"([^"]+)"' | ForEach-Object { $_.Matches[0].Groups[1].Value }
+          if ($packageVersion -ne $androidVersion) {
+            throw "package.json version '$packageVersion' does not match Android version '$androidVersion'."
+          }
+          if ("${{ github.ref_type }}" -eq "tag" -and "${{ github.ref_name }}" -notmatch [regex]::Escape($packageVersion)) {
+            throw "Tag '${{ github.ref_name }}' does not match app version '$packageVersion'."
+          }
+          "version=$packageVersion" >> $env:GITHUB_OUTPUT
+
+      - name: Sync Android project
+        run: npm run mobile:sync
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x android/gradlew
+
+      - name: Build installable Android APK
+        working-directory: android
+        run: ./gradlew assembleDebug
+
+      - name: Name APK
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk "HAN2-MOBILE-${{ steps.app.outputs.version }}.apk"
 
       - name: Publish GitHub Release
+        if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            release/*.exe
-            release/*.yml
-            release/*.blockmap
-          name: "Fronte ${{ steps.app.outputs.version }}"
+          name: "HAN2 Mobile ${{ steps.app.outputs.version }}"
           body_path: release-notes.md
           generate_release_notes: false
+          files: "HAN2-MOBILE-${{ steps.app.outputs.version }}.apk"
+
+      - name: Upload workflow artifact
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: "HAN2-MOBILE-${{ steps.app.outputs.version }}"
+          path: "HAN2-MOBILE-${{ steps.app.outputs.version }}.apk"
