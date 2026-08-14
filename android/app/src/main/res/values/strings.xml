@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">HAN2 APP</string>
+    <string name="title_activity_main">HAN2 APP</string>
+    <string name="package_name">com.han2.app</string>
+    <string name="custom_url_scheme">com.han2.app</string>
+    <string name="keyboard_name">HAN2 안전 키보드</string>
+    <string name="keyboard_subtype_korean">한국어</string>
+</resources>
