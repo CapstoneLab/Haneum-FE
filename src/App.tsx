@@ -114,7 +114,7 @@ function App() {
   return <main className="settings-app">
     <div className="phone-page">
       <header className="app-header">
-        <div><span className="brand-pill"><Icon name="keyboard" /> HAN2 KEYBOARD</span><h1>키보드 설정</h1><p>입력에 필요한 기능만 간편하게 관리하세요.</p></div>
+        <div><h1>키보드 설정</h1><p>입력에 필요한 기능만 간편하게 관리하세요.</p></div>
         <div className={`status-chip ${(isAndroid ? keyboardStatus.selected : settings.keyboard) ? 'active' : ''}`}><i />{isAndroid ? keyboardStatus.selected ? '기본 키보드' : keyboardStatus.enabled ? '선택 필요' : '설정 필요' : settings.keyboard ? '사용 중' : '꺼짐'}</div>
       </header>
 

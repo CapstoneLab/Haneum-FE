@@ -7,9 +7,7 @@ button { cursor:pointer; }
 .settings-app { min-height:100vh; padding:44px 20px 70px; background:radial-gradient(circle at 50% -10%,#e4e5ff 0,transparent 35%),#f2f4f8; }
 .phone-page { width:min(100%,720px); margin:auto; }
 .app-header { display:flex; align-items:flex-end; justify-content:space-between; gap:24px; margin-bottom:24px; }
-.brand-pill { display:inline-flex; align-items:center; gap:7px; color:#6561d8; font-size:11px; font-weight:800; letter-spacing:.1em; }
-.brand-pill svg { width:17px; height:17px; }
-.app-header h1 { margin:10px 0 5px; font-size:38px; line-height:1.2; letter-spacing:-.055em; }
+.app-header h1 { margin:0 0 5px; font-size:38px; line-height:1.2; letter-spacing:-.055em; }
 .app-header p { margin:0; color:#7b8493; font-size:14px; }
 .status-chip { flex:none; display:flex; align-items:center; gap:7px; margin-bottom:4px; padding:8px 12px; color:#7f8793; border:1px solid #dce0e8; border-radius:999px; background:#fff; font-size:12px; font-weight:700; }
 .status-chip i { width:7px; height:7px; border-radius:50%; background:#aeb4bd; }
