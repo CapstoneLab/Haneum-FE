@@ -1,40 +1,90 @@
-name: Android Kotlin Release
+name: Android CI and Release
 
 on:
   push:
+    branches:
+      - main
     tags:
       - "v*"
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  release:
+  test-and-build:
+    name: Test and build APK
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Set up Java 21
+      - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: "17"
           cache: gradle
+
+      - name: Validate release tag and app version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          APP_VERSION=$(sed -n 's/^[[:space:]]*versionName "\([^"]*\)"/\1/p' android/app/build.gradle)
+          TAG_VERSION=${GITHUB_REF_NAME#v}
+          test -n "$APP_VERSION"
+          test "$APP_VERSION" = "$TAG_VERSION"
 
       - name: Make Gradle executable
         run: chmod +x android/gradlew
 
-      - name: Build Kotlin Android APK
+      - name: Run unit tests and build APK
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon
+        run: ./gradlew testDebugUnitTest assembleDebug --no-daemon
 
-      - name: Prepare release APK
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk "HAN2-MOBILE-${GITHUB_REF_NAME#v}.apk"
+      - name: Collect test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-test-results-${{ github.run_number }}
+          path: |
+            android/app/build/reports/tests/testDebugUnitTest/
+            android/app/build/test-results/testDebugUnitTest/
+          if-no-files-found: warn
+          retention-days: 14
 
-      - name: Create GitHub release
+      - name: Prepare versioned APK
+        if: success()
+        shell: bash
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          if [[ "$GITHUB_REF" != refs/tags/v* ]]; then VERSION="ci-${GITHUB_SHA::7}"; fi
+          cp android/app/build/outputs/apk/debug/app-debug.apk "HAN2-MOBILE-${VERSION}.apk"
+
+      - name: Upload APK artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: han2-android-${{ github.run_number }}
+          path: HAN2-MOBILE-*.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        if: success() && startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           name: HAN2 Mobile ${{ github.ref_name }}
           generate_release_notes: true
+          fail_on_unmatched_files: true
+          overwrite_files: true
           files: HAN2-MOBILE-*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
