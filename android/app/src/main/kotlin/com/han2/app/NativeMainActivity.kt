@@ -1,6 +1,7 @@
 package com.han2.app
 
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -11,6 +12,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.inputmethod.InputMethodManager
 import android.widget.LinearLayout
+import android.widget.ImageView
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
@@ -27,7 +29,10 @@ class NativeMainActivity : AppCompatActivity() {
     private lateinit var statusChip: TextView
     private lateinit var heroDescription: TextView
     private lateinit var setupGuide: LinearLayout
+    private lateinit var backendStatus: TextView
     private val protectionDependentSwitches = mutableListOf<SwitchCompat>()
+    private val switches = mutableMapOf<String, SwitchCompat>()
+    private var syncingSettings = false
 
     private val navy = Color.rgb(26, 35, 50)
     private val muted = Color.rgb(139, 148, 165)
@@ -48,6 +53,7 @@ class NativeMainActivity : AppCompatActivity() {
             isFillViewport = true
             addView(content)
         })
+        syncSettingsFromBackend()
     }
 
     override fun onResume() {
@@ -56,6 +62,9 @@ class NativeMainActivity : AppCompatActivity() {
     }
 
     private fun buildScreen() {
+        content.removeAllViews()
+        protectionDependentSwitches.clear()
+        switches.clear()
         val header = horizontal().apply {
             gravity = Gravity.CENTER_VERTICAL
             addView(vertical().apply {
@@ -90,6 +99,12 @@ class NativeMainActivity : AppCompatActivity() {
             })
         }
         content.addView(hero)
+        backendStatus = label("백엔드 확인 중…", 12f, muted, true).apply {
+            setPadding(dp(12), dp(9), dp(12), dp(9))
+            background = rounded(Color.WHITE, 12f)
+        }
+        content.addView(space(8))
+        content.addView(backendStatus, matchWrap())
         content.addView(space(12))
 
         setupGuide = vertical().apply {
@@ -104,6 +119,10 @@ class NativeMainActivity : AppCompatActivity() {
             addView(setupStep("2", "기본 키보드로 선택", "키보드 선택 창에서 HAN2 선택") {
                 (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).showInputMethodPicker()
             })
+            addView(space(10))
+            addView(setupStep("3", "전송 보호 접근성 켜기", "앱의 전송 버튼을 누를 때 다시 확인합니다") {
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            })
         }
         content.addView(setupGuide)
 
@@ -116,13 +135,15 @@ class NativeMainActivity : AppCompatActivity() {
         coreCard.addView(toggleRow("↔", Color.rgb(65, 153, 226), "키 입력 진동", "키를 누를 때 가볍게 진동해요", KeyboardPreferences.HAPTICS, true))
         coreCard.addView(divider())
         coreCard.addView(toggleRow("◖", Color.rgb(249, 158, 68), "키 입력 소리", "키를 누를 때 소리를 재생해요", KeyboardPreferences.SOUND, false))
+        coreCard.addView(divider())
+        coreCard.addView(scopeNavigationRow())
         content.addView(coreCard)
 
         content.addView(section("키보드 모양"))
         val appearanceCard = settingsCard()
         appearanceCard.addView(infoRow("◉", Color.rgb(221, 103, 157), "테마", "키보드 화면 스타일", "시스템"))
         appearanceCard.addView(divider())
-        appearanceCard.addView(infoRow("#", Color.rgb(135, 148, 169), "숫자 행", "한글과 영문 자판 위에 항상 표시", "항상 켜짐"))
+        appearanceCard.addView(infoRow("#", Color.rgb(135, 148, 169), "숫자·기호", "키보드의 ?123 키로 전환", "표준 배열"))
         content.addView(appearanceCard)
 
         content.addView(space(14))
@@ -138,6 +159,85 @@ class NativeMainActivity : AppCompatActivity() {
             setPadding(0, dp(20), 0, 0)
         }, matchWrap())
         updateFeatureAvailability()
+    }
+
+    private fun scopeNavigationRow(): View = horizontal().apply {
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(dp(12), dp(13), dp(12), dp(13))
+        addView(icon("▦", Color.rgb(73, 124, 220), Color.WHITE))
+        addView(vertical().apply {
+            setPadding(dp(12), 0, dp(6), 0)
+            addView(label("설치된 앱 감지 설정", 16f, navy, true))
+            addView(label("기본·사용자 설치 앱별로 감지를 설정해요", 12f, muted))
+        }, LinearLayout.LayoutParams(0, wrap, 1f))
+        addView(label("설정 ›", 13f, purple, true))
+        setOnClickListener { showAppScopeScreen() }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun showAppScopeScreen() {
+        content.removeAllViews()
+        content.addView(horizontal().apply {
+            gravity = Gravity.CENTER_VERTICAL
+            addView(label("‹", 34f, purple, true).apply {
+                gravity = Gravity.CENTER
+                contentDescription = "돌아가기"
+                background = rounded(Color.WHITE, 14f)
+                setOnClickListener {
+                    buildScreen()
+                    syncSettingsFromBackend()
+                }
+            }, LinearLayout.LayoutParams(dp(52), dp(52)))
+            addView(label("설치된 앱 감지 설정", 25f, navy, true).apply { setPadding(dp(14), 0, 0, 0) })
+        })
+        content.addView(space(16))
+        content.addView(label("감지할 앱 선택", 20f, navy, true))
+        content.addView(label("켜진 앱에서만 민감정보를 감지합니다.", 14f, muted).apply {
+            setPadding(0, dp(4), 0, dp(16))
+        })
+
+        val launchablePackages = packageManager.queryIntentActivities(
+            Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER),
+            0
+        ).mapTo(mutableSetOf()) { it.activityInfo.packageName }
+        val apps = packageManager.getInstalledApplications(0)
+            .filter { app ->
+                val userInstalled = app.flags and ApplicationInfo.FLAG_SYSTEM == 0
+                app.packageName != packageName &&
+                    (userInstalled || app.packageName in launchablePackages)
+            }
+            .sortedBy { packageManager.getApplicationLabel(it).toString().lowercase(Locale.getDefault()) }
+        val card = settingsCard()
+        apps.forEachIndexed { index, app ->
+            val appName = packageManager.getApplicationLabel(app).toString()
+            val key = KeyboardPreferences.APP_SCOPE_PREFIX + app.packageName
+            card.addView(horizontal().apply {
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(12), dp(10), dp(10), dp(10))
+                addView(ImageView(this@NativeMainActivity).apply {
+                    setImageDrawable(packageManager.getApplicationIcon(app))
+                    contentDescription = appName
+                }, LinearLayout.LayoutParams(dp(42), dp(42)))
+                addView(vertical().apply {
+                    setPadding(dp(12), 0, dp(8), 0)
+                    addView(label(appName, 15f, navy, true))
+                    addView(label(app.packageName, 10f, muted))
+                }, LinearLayout.LayoutParams(0, wrap, 1f))
+                addView(SwitchCompat(this@NativeMainActivity).apply {
+                    isChecked = preferences.getBoolean(key, true)
+                    contentDescription = "$appName 감지"
+                    setOnCheckedChangeListener { _, checked ->
+                        preferences.edit().putBoolean(key, checked).apply()
+                    }
+                })
+            })
+            if (index != apps.lastIndex) card.addView(divider())
+        }
+        content.addView(card)
+        content.addView(label("총 ${apps.size}개 앱", 12f, muted).apply {
+            gravity = Gravity.CENTER
+            setPadding(0, dp(16), 0, dp(24))
+        })
     }
 
     private fun updateKeyboardStatus() {
@@ -200,11 +300,51 @@ class NativeMainActivity : AppCompatActivity() {
                         updateFeatureAvailability()
                         updateKeyboardStatus()
                     }
+                    if (!syncingSettings && KeyBackApi.configured) KeyBackApi.updateSettings(this@NativeMainActivity)
                 }
                 contentDescription = title
             }
             if (requiresProtection) protectionDependentSwitches.add(toggle)
+            switches[key] = toggle
             addView(toggle)
+        }
+    }
+
+    private fun syncSettingsFromBackend() {
+        if (!KeyBackApi.configured) {
+            backendStatus.text = "백엔드 설정 필요 · KEYBACK_API_KEY를 입력하세요"
+            backendStatus.setTextColor(Color.rgb(174, 83, 55))
+            return
+        }
+        KeyBackApi.health { health ->
+            runOnUiThread {
+                health.fold(
+                    onSuccess = {
+                        backendStatus.text = "● KeyBack 연결됨 · $it"
+                        backendStatus.setTextColor(Color.rgb(42, 151, 102))
+                    },
+                    onFailure = {
+                        backendStatus.text = "KeyBack 연결 실패 · 로컬 보호 사용 중"
+                        backendStatus.setTextColor(Color.rgb(174, 83, 55))
+                    }
+                )
+            }
+        }
+        KeyBackApi.getSettings(this) { result ->
+            result.onSuccess { settings ->
+                runOnUiThread {
+                    syncingSettings = true
+                    preferences.edit()
+                        .putString(KeyboardPreferences.RISK_SENSITIVITY, settings.riskSensitivity)
+                        .putBoolean(KeyboardPreferences.HAPTICS, settings.vibrationEnabled)
+                        .putBoolean(KeyboardPreferences.TTS, settings.ttsEnabled)
+                        .putBoolean(KeyboardPreferences.LARGE_TEXT, settings.largeTextEnabled)
+                        .putBoolean(KeyboardPreferences.HIGH_CONTRAST, settings.highContrastEnabled)
+                        .apply()
+                    switches[KeyboardPreferences.HAPTICS]?.isChecked = settings.vibrationEnabled
+                    syncingSettings = false
+                }
+            }
         }
     }
 
@@ -257,6 +397,10 @@ class NativeMainActivity : AppCompatActivity() {
     }
 
     private fun showDetectionReport() {
+        if (KeyBackApi.configured) {
+            showRemoteDetectionReport()
+            return
+        }
         val reports = DetectionStore.load(this)
         val list = vertical().apply {
             setPadding(dp(20), dp(6), dp(20), dp(12))
@@ -303,6 +447,71 @@ class NativeMainActivity : AppCompatActivity() {
             }
         }
         dialog.show()
+    }
+
+    private fun showRemoteDetectionReport() {
+        val list = vertical().apply {
+            setPadding(dp(20), dp(10), dp(20), dp(14))
+            addView(label("서버 기록을 불러오는 중…", 14f, muted))
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("KeyBack 위험 보고서")
+            .setView(ScrollView(this).apply { addView(list) })
+            .setNegativeButton("닫기", null)
+            .setPositiveButton("전체 삭제", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).visibility = View.GONE
+        }
+        dialog.show()
+        KeyBackApi.getRiskLogs(this) { result ->
+            runOnUiThread {
+                if (!dialog.isShowing) return@runOnUiThread
+                list.removeAllViews()
+                result.fold(
+                    onSuccess = { logs ->
+                        if (logs.isEmpty()) {
+                            list.addView(label("아직 서버에 저장된 위험 기록이 없어요", 15f, navy, true))
+                        } else {
+                            list.addView(label("서버 기록 ${logs.size}건", 14f, muted, true))
+                            list.addView(space(8))
+                            logs.forEach { log ->
+                                list.addView(vertical().apply {
+                                    setPadding(dp(13), dp(12), dp(13), dp(12))
+                                    background = rounded(
+                                        if (log.level == RiskLevel.DANGER) Color.rgb(255, 235, 237) else Color.rgb(255, 247, 225),
+                                        12f
+                                    )
+                                    addView(label("${log.level.name} · 위험도 ${log.riskScore}", 13f, navy, true))
+                                    addView(label(log.reason.ifBlank { "판단 이유 없음" }, 12f, Color.rgb(91, 99, 115)))
+                                    addView(label(log.createdAt, 11f, muted))
+                                })
+                                list.addView(space(8))
+                            }
+                            dialog.getButton(AlertDialog.BUTTON_POSITIVE).apply {
+                                visibility = View.VISIBLE
+                                setOnClickListener {
+                                    isEnabled = false
+                                    text = "삭제 중…"
+                                    var remaining = logs.size
+                                    logs.forEach { log ->
+                                        KeyBackApi.deleteRiskLog(this@NativeMainActivity, log.id) {
+                                            runOnUiThread {
+                                                remaining--
+                                                if (remaining == 0) dialog.dismiss()
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    onFailure = {
+                        list.addView(label("서버 기록을 불러오지 못했습니다.\n${it.message.orEmpty()}", 14f, Color.rgb(174, 83, 55), true))
+                    }
+                )
+            }
+        }
     }
 
     private fun showAppInfo() {

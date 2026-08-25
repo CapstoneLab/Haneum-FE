@@ -6,4 +6,5 @@
     <string name="custom_url_scheme">com.han2.app</string>
     <string name="keyboard_name">HAN2 안전 키보드</string>
     <string name="keyboard_subtype_korean">한국어</string>
+    <string name="risk_send_guard_description">민감정보가 감지된 상태에서 지원되는 앱의 전송 버튼을 확인합니다.</string>
 </resources>

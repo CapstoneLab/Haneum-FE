@@ -1,13 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
     <application
         android:allowBackup="false"
+        android:usesCleartextTraffic="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
+        <activity
+            android:name=".RiskConfirmationActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:theme="@style/AppTheme.RiskDialog" />
         <activity
             android:name=".NativeMainActivity"
             android:exported="true"
@@ -31,6 +38,18 @@
             <meta-data
                 android:name="android.view.im"
                 android:resource="@xml/han2_input_method" />
+        </service>
+        <service
+            android:name=".RiskSendGuardService"
+            android:exported="false"
+            android:label="HAN2 전송 보호"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/risk_send_guard_service" />
         </service>
     </application>
 </manifest>
