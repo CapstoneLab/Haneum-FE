@@ -1,4 +1,4 @@
-name: Android CI and Release
+name: Android Build, Test, and Release
 
 on:
   push:
@@ -12,16 +12,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: android-${{ github.ref }}
+  group: android-release-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  test-and-build:
-    name: Test and build APK
+  build:
+    name: 1. Build APK
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    permissions:
-      contents: write
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -45,9 +43,51 @@ jobs:
       - name: Make Gradle executable
         run: chmod +x android/gradlew
 
-      - name: Run unit tests and build APK
+      - name: Build installable APK
         working-directory: android
-        run: ./gradlew testDebugUnitTest assembleDebug --no-daemon
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Name APK
+        shell: bash
+        run: |
+          APP_VERSION=$(sed -n 's/^[[:space:]]*versionName "\([^"]*\)"/\1/p' android/app/build.gradle)
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            FILE_VERSION="$APP_VERSION"
+          else
+            FILE_VERSION="$APP_VERSION-ci.${GITHUB_RUN_NUMBER}"
+          fi
+          cp android/app/build/outputs/apk/debug/app-debug.apk "HAN2-MOBILE-${FILE_VERSION}.apk"
+
+      - name: Upload APK for later jobs
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: HAN2-MOBILE-*.apk
+          if-no-files-found: error
+          retention-days: 30
+
+  test:
+    name: 2. Run unit tests
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Make Gradle executable
+        run: chmod +x android/gradlew
+
+      - name: Run unit tests
+        working-directory: android
+        run: ./gradlew testDebugUnitTest --no-daemon
 
       - name: Collect test reports
         if: always()
@@ -60,31 +100,43 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Prepare versioned APK
-        if: success()
+  release:
+    name: 3. Publish GitHub Release
+    needs: test
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download tested APK
+        uses: actions/download-artifact@v4
+        with:
+          name: android-apk
+
+      - name: Set release metadata
+        id: metadata
         shell: bash
         run: |
-          VERSION=${GITHUB_REF_NAME#v}
-          if [[ "$GITHUB_REF" != refs/tags/v* ]]; then VERSION="ci-${GITHUB_SHA::7}"; fi
-          cp android/app/build/outputs/apk/debug/app-debug.apk "HAN2-MOBILE-${VERSION}.apk"
-
-      - name: Upload APK artifact
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: han2-android-${{ github.run_number }}
-          path: HAN2-MOBILE-*.apk
-          if-no-files-found: error
-          retention-days: 30
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+            echo "name=HAN2 Mobile $GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          else
+            SHORT_SHA=${GITHUB_SHA::7}
+            echo "tag=ci-${GITHUB_RUN_NUMBER}-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+            echo "name=HAN2 Mobile CI #${GITHUB_RUN_NUMBER} (${SHORT_SHA})" >> "$GITHUB_OUTPUT"
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Publish GitHub Release
-        if: success() && startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          name: HAN2 Mobile ${{ github.ref_name }}
+          tag_name: ${{ steps.metadata.outputs.tag }}
+          name: ${{ steps.metadata.outputs.name }}
+          prerelease: ${{ steps.metadata.outputs.prerelease }}
           generate_release_notes: true
           fail_on_unmatched_files: true
-          overwrite_files: true
           files: HAN2-MOBILE-*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -290,12 +290,17 @@ class NativeKeyboardService : InputMethodService() {
         lastAnalyzedText = text
         val generation = ++analysisGeneration
         val revision = draftSession.revision
-        if (local.level != RiskLevel.DANGER) showCheckingStatus()
+        if (local.level == RiskLevel.SAFE) showCheckingStatus()
         debounceRunnable?.let(mainHandler::removeCallbacks)
         debounceRunnable = Runnable {
             if (generation == analysisGeneration) requestRemoteAnalysis(text, local, generation, revision)
         }
-        mainHandler.postDelayed(debounceRunnable!!, ANALYSIS_DEBOUNCE_MS)
+        val delay = if (local.level == RiskLevel.SAFE) {
+            ANALYSIS_DEBOUNCE_MS
+        } else {
+            URGENT_ANALYSIS_DEBOUNCE_MS
+        }
+        mainHandler.postDelayed(debounceRunnable!!, delay)
     }
 
     private fun requestRemoteAnalysis(
@@ -552,7 +557,10 @@ class NativeKeyboardService : InputMethodService() {
         remoteAnalysisText = ""
     }
 
-    companion object { private const val ANALYSIS_DEBOUNCE_MS = 1_000L }
+    companion object {
+        private const val ANALYSIS_DEBOUNCE_MS = 350L
+        private const val URGENT_ANALYSIS_DEBOUNCE_MS = 120L
+    }
 
     private fun rounded(fill: Int, stroke: Int) = GradientDrawable().apply {
         setColor(fill)

@@ -20,6 +20,17 @@ class RiskAnalyzerTest {
     }
 
     @Test
+    fun ordinaryShortNumberDoesNotTriggerSensitiveNumberWarning() {
+        assertEquals(RiskLevel.SAFE, RiskAnalyzer.analyze("약속 시간은 1234입니다").level)
+    }
+
+    @Test
+    fun httpsAndCommonShortLinksShowWarning() {
+        assertEquals(RiskLevel.WARNING, RiskAnalyzer.analyze("https://example.com 확인").level)
+        assertEquals(RiskLevel.WARNING, RiskAnalyzer.analyze("open.kakao.com 링크").level)
+    }
+
+    @Test
     fun sensitiveIntentWarnsBeforeTheNumberIsEntered() {
         assertEquals(RiskLevel.WARNING, RiskAnalyzer.analyze("주민번호 입력할게요").level)
         assertEquals(RiskLevel.WARNING, RiskAnalyzer.analyze("계좌번호는").level)

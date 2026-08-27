@@ -27,9 +27,9 @@ HTTPS 주소에서 다음 형식의 JSON을 제공해야 합니다.
 
 ```json
 {
-  "versionCode": 5,
-  "versionName": "0.3.0",
-  "apkUrl": "https://example.com/han2-0.3.0.apk",
+  "versionCode": 6,
+  "versionName": "0.3.1",
+  "apkUrl": "https://example.com/han2-0.3.1.apk",
   "releaseNotes": "위험 감지 기능을 개선했습니다."
 }
 ```
@@ -41,3 +41,13 @@ gradlew.bat assembleRelease -PHAN2_UPDATE_MANIFEST_URL=https://example.com/han2-
 ```
 
 앱은 `versionCode`를 비교하여 새 버전일 때만 업데이트 버튼을 표시합니다. APK 설치 전에는 Android 시스템 확인 화면이 표시됩니다.
+
+## 자동 빌드·테스트·릴리즈
+
+`main` 브랜치에 푸시하면 GitHub Actions가 다음 순서를 기본으로 실행합니다.
+
+1. Android debug APK 빌드
+2. 단위 테스트 실행
+3. 앞 단계가 모두 성공한 경우 GitHub 프리릴리즈와 APK 발행
+
+일반 `main` 푸시는 추적 가능한 `ci-<실행번호>-<커밋>` 프리릴리즈가 됩니다. 정식 버전을 발행하려면 `android/app/build.gradle`의 `versionName`과 같은 `v<version>` 태그(예: `v0.3.1`)를 푸시합니다. 태그와 앱 버전이 다르면 릴리즈 전에 실패합니다.

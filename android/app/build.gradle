@@ -21,8 +21,8 @@ android {
         applicationId "com.han2.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 5
-        versionName "0.3.0"
+        versionCode 6
+        versionName "0.3.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField "String", "UPDATE_MANIFEST_URL", "\"${updateManifestUrl}\""
         buildConfigField "String", "KEYBACK_BASE_URL", asBuildConfigString(keyBackBaseUrl)

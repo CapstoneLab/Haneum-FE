@@ -1,6 +1,7 @@
 package com.han2.app
 
 import android.content.Intent
+import android.content.ComponentName
 import android.content.pm.ApplicationInfo
 import android.graphics.Color
 import android.graphics.Typeface
@@ -30,6 +31,7 @@ class NativeMainActivity : AppCompatActivity() {
     private lateinit var heroDescription: TextView
     private lateinit var setupGuide: LinearLayout
     private lateinit var backendStatus: TextView
+    private val setupStepIndicators = mutableListOf<TextView>()
     private val protectionDependentSwitches = mutableListOf<SwitchCompat>()
     private val switches = mutableMapOf<String, SwitchCompat>()
     private var syncingSettings = false
@@ -45,7 +47,7 @@ class NativeMainActivity : AppCompatActivity() {
 
         content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(24), dp(16), dp(36))
+            setPadding(dp(16), dp(40), dp(16), dp(36))
         }
         buildScreen()
         setContentView(ScrollView(this).apply {
@@ -65,6 +67,7 @@ class NativeMainActivity : AppCompatActivity() {
         content.removeAllViews()
         protectionDependentSwitches.clear()
         switches.clear()
+        setupStepIndicators.clear()
         val header = horizontal().apply {
             gravity = Gravity.CENTER_VERTICAL
             addView(vertical().apply {
@@ -110,7 +113,7 @@ class NativeMainActivity : AppCompatActivity() {
         setupGuide = vertical().apply {
             setPadding(dp(16), dp(16), dp(16), dp(16))
             background = borderedCard()
-            addView(label("2단계로 키보드를 연결하세요", 15f, navy, true))
+            addView(label("3단계로 키보드를 연결하세요", 15f, navy, true))
             addView(space(12))
             addView(setupStep("1", "HAN2 안전 키보드 켜기", "Android 키보드 목록에서 활성화") {
                 startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))
@@ -121,7 +124,7 @@ class NativeMainActivity : AppCompatActivity() {
             })
             addView(space(10))
             addView(setupStep("3", "전송 보호 접근성 켜기", "앱의 전송 버튼을 누를 때 다시 확인합니다") {
-                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                openAccessibilityServiceSettings()
             })
         }
         content.addView(setupGuide)
@@ -147,11 +150,11 @@ class NativeMainActivity : AppCompatActivity() {
         content.addView(appearanceCard)
 
         content.addView(space(14))
-        content.addView(clickableCard("ⓘ", "키보드 앱 업데이트 정보", "현재 버전과 업데이트 확인", "›") {
+        content.addView(clickableCard("ⓘ", "키보드 앱 업데이트 정보", "현재 버전과 업데이트 확인") {
             showAppInfo()
         })
         content.addView(space(12))
-        content.addView(clickableCard("▤", "보고서 확인", "감지된 위험과 판단 이유를 확인하세요", "보기 ›") {
+        content.addView(clickableCard("▤", "보고서 확인", "감지된 위험과 판단 이유를 확인하세요") {
             showDetectionReport()
         }.apply { background = rounded(Color.rgb(51, 59, 78), 16f) })
         content.addView(label("설정은 이 기기에 안전하게 저장됩니다.", 12f, muted).apply {
@@ -170,25 +173,16 @@ class NativeMainActivity : AppCompatActivity() {
             addView(label("설치된 앱 감지 설정", 16f, navy, true))
             addView(label("기본·사용자 설치 앱별로 감지를 설정해요", 12f, muted))
         }, LinearLayout.LayoutParams(0, wrap, 1f))
-        addView(label("설정 ›", 13f, purple, true))
+        addView(navigationArrow(purple))
         setOnClickListener { showAppScopeScreen() }
     }
 
     @Suppress("DEPRECATION")
     private fun showAppScopeScreen() {
         content.removeAllViews()
-        content.addView(horizontal().apply {
-            gravity = Gravity.CENTER_VERTICAL
-            addView(label("‹", 34f, purple, true).apply {
-                gravity = Gravity.CENTER
-                contentDescription = "돌아가기"
-                background = rounded(Color.WHITE, 14f)
-                setOnClickListener {
-                    buildScreen()
-                    syncSettingsFromBackend()
-                }
-            }, LinearLayout.LayoutParams(dp(52), dp(52)))
-            addView(label("설치된 앱 감지 설정", 25f, navy, true).apply { setPadding(dp(14), 0, 0, 0) })
+        content.addView(subPageHeader("설치된 앱 감지 설정") {
+            buildScreen()
+            syncSettingsFromBackend()
         })
         content.addView(space(16))
         content.addView(label("감지할 앱 선택", 20f, navy, true))
@@ -245,19 +239,35 @@ class NativeMainActivity : AppCompatActivity() {
         val enabled = manager.enabledInputMethodList.any { it.packageName == packageName }
         val selected = Settings.Secure.getString(contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD)
             ?.startsWith(packageName) == true
+        val accessibilityEnabled = Settings.Secure.getString(
+            contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ).orEmpty().split(':').any { flattenedName ->
+            ComponentName.unflattenFromString(flattenedName)?.let { component ->
+                component.packageName == packageName &&
+                    component.className == RiskSendGuardService::class.java.name
+            } == true
+        }
         val protectionEnabled = preferences.getBoolean(KeyboardPreferences.PROTECTION, true)
+        updateSetupProgress(enabled, selected, accessibilityEnabled)
         when {
             !protectionEnabled -> {
                 statusChip.text = "○ 보호 꺼짐"
                 statusChip.setTextColor(Color.rgb(139, 148, 165))
                 heroDescription.text = "안전 입력 보호와 위험 감지가 비활성화됐어요"
-                setupGuide.visibility = if (selected) View.GONE else View.VISIBLE
+                setupGuide.visibility = if (enabled && selected && accessibilityEnabled) View.GONE else View.VISIBLE
             }
-            selected -> {
-                statusChip.text = "● 사용 중"
+            enabled && selected && accessibilityEnabled -> {
+                statusChip.text = "● 설정 완료"
                 statusChip.setTextColor(Color.rgb(42, 151, 102))
                 heroDescription.text = "다른 앱에서도 안전 입력 보호가 동작해요"
                 setupGuide.visibility = View.GONE
+            }
+            selected -> {
+                statusChip.text = "● 접근성 필요"
+                statusChip.setTextColor(Color.rgb(155, 104, 47))
+                heroDescription.text = "마지막으로 전송 보호 접근성을 켜 주세요"
+                setupGuide.visibility = View.VISIBLE
             }
             enabled -> {
                 statusChip.text = "● 선택 필요"
@@ -272,6 +282,41 @@ class NativeMainActivity : AppCompatActivity() {
                 setupGuide.visibility = View.VISIBLE
             }
         }
+    }
+
+    private fun updateSetupProgress(enabled: Boolean, selected: Boolean, accessibilityEnabled: Boolean) {
+        val completedSteps = when {
+            !enabled -> 0
+            !selected -> 1
+            !accessibilityEnabled -> 2
+            else -> 3
+        }
+        setupStepIndicators.forEachIndexed { index, indicator ->
+            val step = index + 1
+            when {
+                step <= completedSteps -> {
+                    indicator.setTextColor(Color.rgb(54, 161, 116))
+                    indicator.background = rounded(Color.rgb(228, 248, 239), 18f)
+                }
+                step == completedSteps + 1 -> {
+                    indicator.setTextColor(Color.WHITE)
+                    indicator.background = rounded(purple, 18f)
+                }
+                else -> {
+                    indicator.setTextColor(muted)
+                    indicator.background = rounded(Color.rgb(238, 240, 246), 18f)
+                }
+            }
+        }
+    }
+
+    private fun openAccessibilityServiceSettings() {
+        val component = ComponentName(this, RiskSendGuardService::class.java)
+        val detailsIntent = Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS").apply {
+            putExtra(Intent.EXTRA_COMPONENT_NAME, component)
+        }
+        runCatching { startActivity(detailsIntent) }
+            .onFailure { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
     }
 
     private fun toggleRow(
@@ -368,7 +413,7 @@ class NativeMainActivity : AppCompatActivity() {
         addView(label(value, 13f, purple, true))
     }
 
-    private fun clickableCard(symbol: String, title: String, description: String, actionText: String, action: () -> Unit): View = horizontal().apply {
+    private fun clickableCard(symbol: String, title: String, description: String, action: () -> Unit): View = horizontal().apply {
         gravity = Gravity.CENTER_VERTICAL
         setPadding(dp(14), dp(14), dp(14), dp(14))
         background = rounded(Color.WHITE, 16f)
@@ -378,16 +423,18 @@ class NativeMainActivity : AppCompatActivity() {
             addView(label(title, 16f, if (title == "보고서 확인") Color.WHITE else navy, true))
             addView(label(description, 12f, if (title == "보고서 확인") Color.rgb(199, 204, 218) else muted))
         }, LinearLayout.LayoutParams(0, wrap, 1f))
-        addView(label(actionText, 13f, if (title == "보고서 확인") Color.WHITE else muted, true))
+        addView(navigationArrow(if (title == "보고서 확인") Color.WHITE else muted))
         setOnClickListener { action() }
     }
 
     private fun setupStep(number: String, title: String, description: String, action: () -> Unit): View = horizontal().apply {
         gravity = Gravity.CENTER_VERTICAL
-        addView(label(number, 13f, if (number == "2") Color.WHITE else Color.rgb(54, 161, 116), true).apply {
+        val indicator = label(number, 13f, muted, true).apply {
             gravity = Gravity.CENTER
-            background = rounded(if (number == "2") purple else Color.rgb(228, 248, 239), 18f)
-        }, LinearLayout.LayoutParams(dp(30), dp(30)))
+            background = rounded(Color.rgb(238, 240, 246), 18f)
+        }
+        setupStepIndicators.add(indicator)
+        addView(indicator, LinearLayout.LayoutParams(dp(30), dp(30)))
         addView(vertical().apply {
             setPadding(dp(12), 0, 0, 0)
             addView(label(title, 14f, navy, true))
@@ -605,6 +652,19 @@ class NativeMainActivity : AppCompatActivity() {
         setPadding(dp(14), dp(11), dp(14), dp(11))
         background = rounded(Color.WHITE, 12f)
         setOnClickListener { action() }
+    }
+    private fun navigationArrow(color: Int) = label("→", 32f, color, true).apply {
+        gravity = Gravity.CENTER
+        layoutParams = LinearLayout.LayoutParams(dp(44), wrap)
+    }
+    private fun subPageHeader(title: String, onBack: () -> Unit) = horizontal().apply {
+        gravity = Gravity.CENTER_VERTICAL
+        addView(label("‹", 24f, navy).apply {
+            gravity = Gravity.CENTER
+            contentDescription = "돌아가기"
+            setOnClickListener { onBack() }
+        }, LinearLayout.LayoutParams(dp(40), dp(40)))
+        addView(label(title, 20f, navy, true).apply { setPadding(dp(8), 0, 0, 0) })
     }
     private fun section(textValue: String) = label(textValue, 13f, muted, true).apply { setPadding(dp(4), dp(24), 0, dp(8)) }
     private fun divider() = View(this).apply { setBackgroundColor(Color.rgb(238, 240, 246)) }.also { it.layoutParams = LinearLayout.LayoutParams(match, dp(1)).apply { marginStart = dp(66) } }

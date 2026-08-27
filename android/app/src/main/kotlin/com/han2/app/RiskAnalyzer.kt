@@ -12,8 +12,8 @@ object RiskAnalyzer {
     private val partialPhone = Regex("(?<!\\d)01[016789]?\\d{0,7}(?!\\d)")
     private val longSensitiveNumber = Regex("(?<!\\d)\\d{13,19}(?!\\d)")
     private val fraudContext = Regex("(송금|입금|계좌|상품권|대출|앱 설치|기관 사칭)")
-    private val suspiciousLink = Regex("(?i)(http://|bit\\.ly|tinyurl)")
-    private val possibleSensitiveNumber = Regex("(?<!\\d)\\d{4,12}(?!\\d)")
+    private val suspiciousLink = Regex("(?i)(https?://|www\\.|bit\\.ly|tinyurl|t\\.me|open\\.kakao)")
+    private val possibleSensitiveNumber = Regex("(?<!\\d)\\d{7,12}(?!\\d)")
 
     fun analyze(text: String): RiskResult = when {
         residentId.containsMatchIn(text) || authentication.containsMatchIn(text) || longSensitiveNumber.containsMatchIn(text) ->
