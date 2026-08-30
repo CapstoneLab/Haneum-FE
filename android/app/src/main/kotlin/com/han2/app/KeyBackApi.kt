@@ -95,6 +95,10 @@ object KeyBackApi {
 
     internal fun parseAnalysisResponse(response: JSONObject, fallbackRequestId: String): RemoteAnalysis {
         val data = response.getJSONObject("data")
+        return parseAnalysisData(data, fallbackRequestId)
+    }
+
+    internal fun parseAnalysisData(data: JSONObject, fallbackRequestId: String): RemoteAnalysis {
         val level = riskLevel(data.optString("risk_level"))
         val conversation = data.optJSONObject("conversation_risk")?.let { risk ->
             ConversationRisk(

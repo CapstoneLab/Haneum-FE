@@ -20,6 +20,9 @@ jobs:
     name: 1. Build APK
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      ORG_GRADLE_PROJECT_KEYBACK_API_KEY: ${{ secrets.KEYBACK_API_KEY }}
+      ORG_GRADLE_PROJECT_KEYBACK_BASE_URL: ${{ vars.KEYBACK_BASE_URL || 'http://112.186.136.153:8000/api/v1' }}
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -45,7 +48,9 @@ jobs:
 
       - name: Build installable APK
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon
+        run: |
+          test -n "$ORG_GRADLE_PROJECT_KEYBACK_API_KEY"
+          ./gradlew assembleDebug --no-daemon
 
       - name: Name APK
         shell: bash

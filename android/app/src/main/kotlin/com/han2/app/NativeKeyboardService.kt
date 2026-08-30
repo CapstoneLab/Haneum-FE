@@ -27,6 +27,12 @@ import android.text.InputType
 import android.widget.LinearLayout
 import android.widget.PopupWindow
 import android.widget.TextView
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 import java.util.UUID
 
 class NativeKeyboardService : InputMethodService() {
@@ -53,6 +59,12 @@ class NativeKeyboardService : InputMethodService() {
     private var activeConversationId = ""
     private var debounceRunnable: Runnable? = null
     private val hangulComposer = HangulComposer()
+    private val serviceJob = SupervisorJob()
+    private val serviceScope = CoroutineScope(serviceJob + Dispatchers.Main.immediate)
+    private val realtimeClient by lazy { RealtimeAnalysisClient() }
+    private val realtimeSession = RealtimeSessionState()
+    private var latestRealtimeStage: RealtimeResultStage? = null
+    private val realtimeDebouncer by lazy { DraftDebouncer(serviceScope, REALTIME_DEBOUNCE_MS, ::sendRealtimeDraft) }
     private val confirmationReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.getStringExtra(RiskGuardContract.EXTRA_SOURCE) != RiskGuardContract.SOURCE_KEYBOARD) return
@@ -78,9 +90,13 @@ class NativeKeyboardService : InputMethodService() {
         }
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(confirmationReceiver, filter, RECEIVER_NOT_EXPORTED)
         else @Suppress("DEPRECATION") registerReceiver(confirmationReceiver, filter)
+        serviceScope.launch { realtimeClient.results.collectLatest(::handleRealtimeResult) }
     }
 
     override fun onDestroy() {
+        stopRealtimeSession()
+        realtimeClient.close()
+        serviceScope.cancel()
         runCatching { unregisterReceiver(confirmationReceiver) }
         sendRiskState(false)
         removeConfirmation()
@@ -89,11 +105,7 @@ class NativeKeyboardService : InputMethodService() {
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
-        val variation = (info?.inputType ?: 0) and InputType.TYPE_MASK_VARIATION
-        sensitiveField = variation == InputType.TYPE_TEXT_VARIATION_PASSWORD ||
-            variation == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ||
-            variation == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD ||
-            variation == InputType.TYPE_NUMBER_VARIATION_PASSWORD
+        sensitiveField = isSensitiveInputType(info?.inputType ?: 0)
         activeAppPackage = info?.packageName.orEmpty()
         if (!restarting || activeConversationId.isBlank()) imeSessionId = UUID.randomUUID().toString()
         val editorIdentity = info?.privateImeOptions?.takeIf { it.isNotBlank() }
@@ -106,11 +118,30 @@ class NativeKeyboardService : InputMethodService() {
         lastAnalyzedText = ""
         remoteAnalysis = null
         remoteAnalysisText = ""
+        latestRealtimeStage = null
+        stopRealtimeSession()
+        if (sensitiveField) {
+            draftSession.sent()
+            hangulComposer.reset()
+        } else if (KeyBackApi.configured) {
+            realtimeSession.start()
+            realtimeClient.connect()
+        }
         if (::status.isInitialized) {
             val enabled = keyboardPreferences().getBoolean(KeyboardPreferences.PROTECTION, true)
             applyRisk(RiskResult(RiskLevel.SAFE, "", ""))
             if (!enabled) removeConfirmation()
         }
+    }
+
+    override fun onFinishInputView(finishingInput: Boolean) {
+        stopRealtimeSession()
+        super.onFinishInputView(finishingInput)
+    }
+
+    override fun onFinishInput() {
+        stopRealtimeSession()
+        super.onFinishInput()
     }
 
     override fun onCreateInputView(): View {
@@ -268,14 +299,15 @@ class NativeKeyboardService : InputMethodService() {
             true
         )
         val text = connection.getTextBeforeCursor(1000, 0)?.toString().orEmpty()
+        if (realtimeSession.draftChanged(text)) realtimeClient.clearPendingDraft()
         draftSession.textChanged(text)
         val result = if (enabled && appEnabled && !sensitiveField) {
             draftSession.latchDanger(RiskAnalyzer.analyze(text.takeLast(240)))
         } else RiskResult(RiskLevel.SAFE, "보호 기능 꺼짐", "")
         applyRisk(result)
         DetectionStore.record(this, result)
-        if (shouldRequestAnalysis(enabled, appEnabled, sensitiveField, text, lastAnalyzedText)) {
-            scheduleRemoteAnalysis(text, result)
+        if (shouldRequestAnalysis(enabled, appEnabled, sensitiveField, text, realtimeSession.lastSentText)) {
+            scheduleRealtimeAnalysis(text, result)
         }
         return result
     }
@@ -283,6 +315,56 @@ class NativeKeyboardService : InputMethodService() {
     private fun finishHangul(connection: InputConnection) {
         if (hangulComposer.text().isNotEmpty()) connection.finishComposingText()
         hangulComposer.reset()
+    }
+
+    private fun scheduleRealtimeAnalysis(text: String, local: RiskResult) {
+        if (!realtimeSession.active) return
+        val immediate = local.level == RiskLevel.DANGER || text.lastOrNull()?.let(::isDraftBoundary) == true
+        realtimeDebouncer.submit(text, local, immediate)
+    }
+
+    private fun sendRealtimeDraft(text: String, local: RiskResult) {
+        val sessionId = realtimeSession.sessionId ?: return
+        val sequence = realtimeSession.nextSequence(text) ?: return
+        latestRealtimeStage = null
+        realtimeClient.sendDraft(RealtimeDraft(
+            sessionId = sessionId,
+            sequence = sequence,
+            requestId = UUID.randomUUID().toString(),
+            deviceId = KeyBackApi.deviceId(this),
+            appPackage = activeAppPackage,
+            conversationId = activeConversationId.takeIf(String::isNotBlank),
+            messageId = draftSession.messageId,
+            inputText = text,
+            maskedText = KeyBackApi.maskSensitive(text),
+            contextMessages = emptyList(),
+            localResult = local,
+            clientVersion = BuildConfig.VERSION_NAME
+        ))
+    }
+
+    private fun handleRealtimeResult(event: RealtimeResult) {
+        if (!realtimeSession.accepts(event)) return
+        if (event.stage == RealtimeResultStage.PROVISIONAL && latestRealtimeStage == RealtimeResultStage.FINAL) return
+        latestRealtimeStage = event.stage
+        val remote = event.analysis.copy(result = draftSession.latchDanger(event.analysis.result))
+        remoteAnalysis = remote
+        remoteAnalysisText = realtimeSession.lastSentText
+        remote.conversationRisk?.let { risk ->
+            if (risk.conversationId.isBlank() || risk.conversationId == activeConversationId) {
+                val merged = conversationStates.apply(activeConversationId, risk.status, event.sequence)
+                conversationStore.saveStatus(activeConversationId, merged)
+            }
+        }
+        applyRisk(remote.result)
+        DetectionStore.record(this, remote.result)
+    }
+
+    private fun stopRealtimeSession() {
+        realtimeDebouncer.cancel()
+        realtimeClient.disconnect()
+        realtimeSession.stop()
+        latestRealtimeStage = null
     }
 
     private fun scheduleRemoteAnalysis(text: String, local: RiskResult) {
@@ -409,25 +491,16 @@ class NativeKeyboardService : InputMethodService() {
         val text = connection.getTextBeforeCursor(1000, 0)?.toString().orEmpty()
         debounceRunnable?.let(mainHandler::removeCallbacks)
         debounceRunnable = null
-        val decide: (RemoteAnalysis?) -> Unit = { remote ->
-            val result = remote?.result
-                ?: remoteAnalysis?.takeIf { remoteAnalysisText == text }?.result
-                ?: local
-            if (conversationStates.current(activeConversationId) == ConversationStatus.CONFIRMED ||
-                result.level == RiskLevel.DANGER) {
-                showRiskConfirmation(connection, result)
-            } else {
-                removeConfirmation()
-                remote?.let { KeyBackApi.saveAction(this, it.requestId, "continue") }
-                performSend(connection)
-            }
+        val remote = remoteAnalysis?.takeIf { remoteAnalysisText == text }
+        val result = remote?.result ?: local
+        if (conversationStates.current(activeConversationId) == ConversationStatus.CONFIRMED ||
+            result.level == RiskLevel.DANGER) {
+            showRiskConfirmation(connection, result)
+        } else {
+            removeConfirmation()
+            remote?.let { KeyBackApi.saveAction(this, it.requestId, "continue") }
+            performSend(connection)
         }
-        if (!KeyBackApi.configured || sensitiveField || !isMeaningfulForRemoteAnalysis(text)) {
-            decide(null)
-            return
-        }
-        val generation = ++analysisGeneration
-        requestRemoteAnalysis(text, local, generation, draftSession.revision, decide)
     }
 
     private fun showRiskConfirmation(connection: InputConnection, result: RiskResult) {
@@ -545,6 +618,9 @@ class NativeKeyboardService : InputMethodService() {
     }
 
     private fun performSend(connection: InputConnection) {
+        realtimeDebouncer.cancel()
+        realtimeSession.draftChanged("")
+        realtimeClient.clearPendingDraft()
         val sentText = connection.getTextBeforeCursor(1000, 0)?.toString().orEmpty()
         if (sentText.isNotBlank() && activeConversationId.isNotBlank()) {
             conversationStore.append(activeConversationId, ContextMessage("user", KeyBackApi.maskSensitive(sentText)))
@@ -558,6 +634,7 @@ class NativeKeyboardService : InputMethodService() {
     }
 
     companion object {
+        private const val REALTIME_DEBOUNCE_MS = 300L
         private const val ANALYSIS_DEBOUNCE_MS = 350L
         private const val URGENT_ANALYSIS_DEBOUNCE_MS = 120L
     }
@@ -578,3 +655,17 @@ class NativeKeyboardService : InputMethodService() {
     @Suppress("DEPRECATION")
     private fun keyboardPreferences() = getSharedPreferences(KeyboardPreferences.NAME, MODE_MULTI_PROCESS)
 }
+
+internal fun isSensitiveInputType(inputType: Int): Boolean {
+    val variation = inputType and InputType.TYPE_MASK_VARIATION
+    val typeClass = inputType and InputType.TYPE_MASK_CLASS
+    return (typeClass == InputType.TYPE_CLASS_TEXT && variation in setOf(
+        InputType.TYPE_TEXT_VARIATION_PASSWORD,
+        InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD,
+        InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD
+    )) || (typeClass == InputType.TYPE_CLASS_NUMBER && variation == InputType.TYPE_NUMBER_VARIATION_PASSWORD)
+}
+
+private fun isDraftBoundary(char: Char): Boolean = char.isWhitespace() || char in setOf(
+    '.', ',', '!', '?', ';', ':', '。', '！', '？'
+)

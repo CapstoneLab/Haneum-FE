@@ -9,6 +9,8 @@ if (localPropertiesFile.exists()) {
 def updateManifestUrl = project.findProperty('HAN2_UPDATE_MANIFEST_URL') ?: localProperties.getProperty('HAN2_UPDATE_MANIFEST_URL', '')
 def keyBackBaseUrl = project.findProperty('KEYBACK_BASE_URL') ?: localProperties.getProperty('KEYBACK_BASE_URL', 'http://112.186.136.153:8000/api/v1')
 def keyBackApiKey = project.findProperty('KEYBACK_API_KEY') ?: localProperties.getProperty('KEYBACK_API_KEY', '')
+def defaultRealtimeUrl = keyBackBaseUrl.toString().replaceFirst('^http:', 'ws:').replaceFirst('^https:', 'wss:').replaceAll('/+$', '') + '/realtime'
+def keyBackRealtimeUrl = project.findProperty('KEYBACK_REALTIME_URL') ?: localProperties.getProperty('KEYBACK_REALTIME_URL', defaultRealtimeUrl)
 
 def asBuildConfigString = { value ->
     '"' + value.toString().replace('\\', '\\\\').replace('"', '\\"') + '"'
@@ -21,12 +23,13 @@ android {
         applicationId "com.han2.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 6
-        versionName "0.3.1"
+        versionCode 7
+        versionName "0.4.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField "String", "UPDATE_MANIFEST_URL", "\"${updateManifestUrl}\""
         buildConfigField "String", "KEYBACK_BASE_URL", asBuildConfigString(keyBackBaseUrl)
         buildConfigField "String", "KEYBACK_API_KEY", asBuildConfigString(keyBackApiKey)
+        buildConfigField "String", "KEYBACK_REALTIME_URL", asBuildConfigString(keyBackRealtimeUrl)
     }
     buildTypes {
         release {
@@ -44,8 +47,11 @@ android {
 
 dependencies {
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "com.squareup.okhttp3:okhttp:4.12.0"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0"
     testImplementation "junit:junit:$junitVersion"
     testImplementation "org.json:json:20240303"
+    testImplementation "org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
 }
