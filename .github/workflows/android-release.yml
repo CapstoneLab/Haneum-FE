@@ -23,6 +23,7 @@ jobs:
     env:
       ORG_GRADLE_PROJECT_KEYBACK_API_KEY: ${{ secrets.KEYBACK_API_KEY }}
       ORG_GRADLE_PROJECT_KEYBACK_BASE_URL: ${{ vars.KEYBACK_BASE_URL || 'http://112.186.136.153:8000/api/v1' }}
+      ORG_GRADLE_PROJECT_HAN2_UPDATE_MANIFEST_URL: ${{ vars.HAN2_UPDATE_MANIFEST_URL }}
     steps:
       - name: Checkout source
         uses: actions/checkout@v4

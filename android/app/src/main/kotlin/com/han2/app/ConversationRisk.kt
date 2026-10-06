@@ -54,7 +54,7 @@ class DraftSession(private val newId: () -> String = { UUID.randomUUID().toStrin
         private set
     private var hadText = false
     private var previousText = ""
-    private var latchedDanger: RiskResult? = null
+    private var latchedRisk: RiskResult? = null
 
     fun switchConversation(id: String) {
         if (conversationId != id) {
@@ -80,9 +80,17 @@ class DraftSession(private val newId: () -> String = { UUID.randomUUID().toStrin
 
     fun sent() = resetDraft()
 
-    fun latchDanger(result: RiskResult): RiskResult {
-        if (result.level == RiskLevel.DANGER && latchedDanger == null) latchedDanger = result
-        return latchedDanger ?: result
+    fun latchRisk(result: RiskResult): RiskResult {
+        val current = latchedRisk
+        if (current == null || result.level.ordinal > current.level.ordinal) {
+            if (result.level != RiskLevel.SAFE) latchedRisk = result
+        }
+        return latchedRisk ?: result
+    }
+
+    fun resolveFinal(result: RiskResult): RiskResult {
+        latchedRisk = if (result.level == RiskLevel.SAFE) null else result
+        return result
     }
 
     private fun resetDraft() {
@@ -90,7 +98,7 @@ class DraftSession(private val newId: () -> String = { UUID.randomUUID().toStrin
         revision++
         hadText = false
         previousText = ""
-        latchedDanger = null
+        latchedRisk = null
     }
 }
 
@@ -142,7 +150,7 @@ object ConversationUi {
             ORANGE_TEXT, ORANGE_BACKGROUND
         )
         ConversationStatus.CONFIRMED -> ConversationPresentation(
-            "개인정보 탈취 또는 사기 위험이 감지되었습니다. 전송하기 전에 내용을 다시 확인하세요.",
+            "민감정보가 감지되었습니다.",
             RED_TEXT, RED_BACKGROUND
         )
     }

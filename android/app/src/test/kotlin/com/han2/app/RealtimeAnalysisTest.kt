@@ -21,15 +21,17 @@ class RealtimeAnalysisTest {
         val safe = RiskResult(RiskLevel.SAFE, "", "")
         val debouncer = DraftDebouncer(this, 300) { text, _ -> emitted += text }
 
-        debouncer.submit("first", safe, immediate = false)
-        advanceTimeBy(200)
-        debouncer.submit("latest", safe, immediate = false)
+        debouncer.submit("ㅇ", safe)
+        advanceTimeBy(100)
+        debouncer.submit("안녕하세", safe)
+        advanceTimeBy(100)
+        debouncer.submit("안녕하세요", safe)
         advanceTimeBy(299)
         assertTrue(emitted.isEmpty())
         advanceTimeBy(1)
         runCurrent()
 
-        assertEquals(listOf("latest"), emitted)
+        assertEquals(listOf("안녕하세요"), emitted)
     }
 
     @Test

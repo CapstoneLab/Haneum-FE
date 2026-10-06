@@ -1,5 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
+    <string name="keyboard_symbols_key">\?123</string>
     <string name="app_name">HAN2 APP</string>
     <string name="title_activity_main">HAN2 APP</string>
     <string name="package_name">com.han2.app</string>

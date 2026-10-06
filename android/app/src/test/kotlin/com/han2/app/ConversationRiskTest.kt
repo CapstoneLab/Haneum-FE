@@ -86,15 +86,32 @@ class ConversationRiskTest {
     fun dangerRemainsLatchedWhileEditingSameDraft() {
         val draft = DraftSession { "draft" }
         val danger = RiskResult(RiskLevel.DANGER, "danger", "reason")
-        assertEquals(RiskLevel.DANGER, draft.latchDanger(danger).level)
-        assertEquals(RiskLevel.DANGER, draft.latchDanger(RiskResult(RiskLevel.SAFE, "safe", "")).level)
+        assertEquals(RiskLevel.DANGER, draft.latchRisk(danger).level)
+        assertEquals(RiskLevel.DANGER, draft.latchRisk(RiskResult(RiskLevel.SAFE, "safe", "")).level)
     }
 
     @Test
     fun dangerLatchClearsAfterSend() {
         val draft = DraftSession { "draft" }
-        draft.latchDanger(RiskResult(RiskLevel.DANGER, "danger", "reason"))
+        draft.latchRisk(RiskResult(RiskLevel.DANGER, "danger", "reason"))
         draft.sent()
-        assertEquals(RiskLevel.SAFE, draft.latchDanger(RiskResult(RiskLevel.SAFE, "safe", "")).level)
+        assertEquals(RiskLevel.SAFE, draft.latchRisk(RiskResult(RiskLevel.SAFE, "safe", "")).level)
+    }
+
+    @Test
+    fun warningRemainsVisibleWhileEditingSameDraftAndCanUpgradeToDanger() {
+        val draft = DraftSession { "draft" }
+        val warning = RiskResult(RiskLevel.WARNING, "warning", "reason")
+        assertEquals(RiskLevel.WARNING, draft.latchRisk(warning).level)
+        assertEquals(RiskLevel.WARNING, draft.latchRisk(RiskResult(RiskLevel.SAFE, "safe", "")).level)
+        assertEquals(RiskLevel.DANGER, draft.latchRisk(RiskResult(RiskLevel.DANGER, "danger", "")).level)
+    }
+
+    @Test
+    fun finalSafeAnalysisClearsProvisionalWarning() {
+        val draft = DraftSession { "draft" }
+        draft.latchRisk(RiskResult(RiskLevel.WARNING, "checking", ""))
+        assertEquals(RiskLevel.SAFE, draft.resolveFinal(RiskResult(RiskLevel.SAFE, "safe", "")).level)
+        assertEquals(RiskLevel.SAFE, draft.latchRisk(RiskResult(RiskLevel.SAFE, "safe", "")).level)
     }
 }

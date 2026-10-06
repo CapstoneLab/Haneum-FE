@@ -11,11 +11,6 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
         <activity
-            android:name=".RiskConfirmationActivity"
-            android:excludeFromRecents="true"
-            android:exported="false"
-            android:theme="@style/AppTheme.RiskDialog" />
-        <activity
             android:name=".NativeMainActivity"
             android:exported="true"
             android:label="@string/title_activity_main"
@@ -41,7 +36,7 @@
         </service>
         <service
             android:name=".RiskSendGuardService"
-            android:exported="false"
+            android:exported="true"
             android:label="HAN2 전송 보호"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>

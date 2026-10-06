@@ -10,7 +10,7 @@ class RiskAnalyzerTest {
     }
 
     @Test
-    fun residentNumberRemainsDanger() {
+    fun residentNumberIsDetectedLocally() {
         assertEquals(RiskLevel.DANGER, RiskAnalyzer.analyze("900101-1234567").level)
     }
 
@@ -20,8 +20,8 @@ class RiskAnalyzerTest {
     }
 
     @Test
-    fun ordinaryShortNumberDoesNotTriggerSensitiveNumberWarning() {
-        assertEquals(RiskLevel.SAFE, RiskAnalyzer.analyze("약속 시간은 1234입니다").level)
+    fun anyNumberWarnsWhileAnalysisIsInProgress() {
+        assertEquals(RiskLevel.WARNING, RiskAnalyzer.analyze("약속 시간은 1시입니다").level)
     }
 
     @Test
@@ -42,7 +42,7 @@ class RiskAnalyzerTest {
     }
 
     @Test
-    fun residentNumberStillMatchesWhenFollowedByKoreanText() {
+    fun residentNumberStillDetectedWhenFollowedByKoreanText() {
         assertEquals(RiskLevel.DANGER, RiskAnalyzer.analyze("900101-1234567입니다").level)
     }
 }

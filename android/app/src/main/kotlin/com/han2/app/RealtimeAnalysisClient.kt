@@ -264,10 +264,10 @@ internal class DraftDebouncer(
 ) {
     private var job: Job? = null
 
-    fun submit(text: String, local: RiskResult, immediate: Boolean) {
+    fun submit(text: String, local: RiskResult) {
         job?.cancel()
         job = scope.launch {
-            if (!immediate) delay(delayMs)
+            delay(delayMs)
             emit(text, local)
         }
     }

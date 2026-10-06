@@ -311,6 +311,28 @@ class NativeMainActivity : AppCompatActivity() {
     }
 
     private fun openAccessibilityServiceSettings() {
+        if (!preferences.getBoolean(KeyboardPreferences.ACCESSIBILITY_DISCLOSURE_ACCEPTED, false)) {
+            AlertDialog.Builder(this)
+                .setTitle("전송 보호 접근성 사용 안내")
+                .setMessage(
+                    "HAN2는 다른 앱의 전송 버튼을 찾아 개인정보가 포함된 메시지가 바로 전송되지 않도록 보호합니다. " +
+                        "이를 위해 현재 화면의 버튼 정보와 입력 상태를 확인합니다. 입력 원문은 서버로 보내거나 저장하지 않습니다. " +
+                        "동의하면 시스템 설정에서 ‘HAN2 전송 보호’를 직접 켜 주세요."
+                )
+                .setNegativeButton("취소", null)
+                .setPositiveButton("동의하고 설정 열기") { _, _ ->
+                    preferences.edit()
+                        .putBoolean(KeyboardPreferences.ACCESSIBILITY_DISCLOSURE_ACCEPTED, true)
+                        .apply()
+                    launchAccessibilitySettings()
+                }
+                .show()
+            return
+        }
+        launchAccessibilitySettings()
+    }
+
+    private fun launchAccessibilitySettings() {
         val component = ComponentName(this, RiskSendGuardService::class.java)
         val detailsIntent = Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS").apply {
             putExtra(Intent.EXTRA_COMPONENT_NAME, component)
@@ -598,11 +620,7 @@ class NativeMainActivity : AppCompatActivity() {
                         onSuccess = { update ->
                             availableUpdate = update
                             if (update == null) {
-                                updateStatus.text = if (BuildConfig.UPDATE_MANIFEST_URL.isBlank()) {
-                                    "업데이트 서버가 아직 연결되지 않았습니다."
-                                } else {
-                                    "현재 최신 버전을 사용 중입니다."
-                                }
+                                updateStatus.text = "업데이트 서버 연결됨 · 현재 최신 버전 v${BuildConfig.VERSION_NAME}"
                                 updateStatus.setTextColor(Color.rgb(52, 139, 98))
                                 updateStatus.background = rounded(Color.rgb(231, 248, 239), 12f)
                             } else {
