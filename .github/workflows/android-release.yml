@@ -49,9 +49,7 @@ jobs:
 
       - name: Build installable APK
         working-directory: android
-        run: |
-          test -n "$ORG_GRADLE_PROJECT_KEYBACK_API_KEY"
-          ./gradlew assembleDebug --no-daemon
+        run: ./gradlew assembleDebug --no-daemon
 
       - name: Name APK
         shell: bash
