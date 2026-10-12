@@ -1,0 +1,3 @@
+# Keep Linux entrypoints executable with Unix line endings.
+android/gradlew text eol=lf
+*.bat text eol=crlf
