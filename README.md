@@ -27,9 +27,9 @@ HTTPS 주소에서 다음 형식의 JSON을 제공해야 합니다.
 
 ```json
 {
-  "versionCode": 8,
-  "versionName": "0.5.0",
-  "apkUrl": "https://example.com/han2-0.5.0.apk",
+  "versionCode": 9,
+  "versionName": "0.5.1",
+  "apkUrl": "https://example.com/han2-0.5.1.apk",
   "releaseNotes": "위험 감지 기능을 개선했습니다."
 }
 ```
@@ -52,4 +52,4 @@ gradlew.bat assembleRelease -PHAN2_UPDATE_MANIFEST_URL=https://example.com/han2-
 2. 단위 테스트 실행
 3. 앞 단계가 모두 성공한 경우 GitHub 프리릴리즈와 APK 발행
 
-일반 `main` 푸시는 추적 가능한 `ci-<실행번호>-<커밋>` 프리릴리즈가 됩니다. 정식 버전을 발행하려면 `android/app/build.gradle`의 `versionName`과 같은 `v<version>` 태그(예: `v0.5.0`)를 푸시합니다. 태그와 앱 버전이 다르면 릴리즈 전에 실패합니다.
+일반 `main` 푸시는 추적 가능한 `ci-<실행번호>-<커밋>` 프리릴리즈가 됩니다. 정식 버전을 발행하려면 `android/app/build.gradle`의 `versionName`과 같은 `v<version>` 태그(예: `v0.5.1`)를 푸시합니다. 태그와 앱 버전이 다르면 릴리즈 전에 실패합니다.
