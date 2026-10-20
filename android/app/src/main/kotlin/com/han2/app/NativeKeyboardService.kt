@@ -51,6 +51,7 @@ class NativeKeyboardService : InputMethodService() {
     private var hasExternalSendButton = false
     private var currentDraftHasText = false
     private var currentRiskLevel = RiskLevel.SAFE
+    private var currentRiskPattern = ""
     private val mainHandler = Handler(Looper.getMainLooper())
     private var analysisGeneration = 0
     private var lastAnalyzedText = ""
@@ -421,13 +422,26 @@ class NativeKeyboardService : InputMethodService() {
         )
         val text = connection.getTextBeforeCursor(1000, 0)?.toString().orEmpty()
         currentDraftHasText = text.isNotBlank()
+        currentRiskPattern = RegexPrivacyDetector().detect(text).findings
+            .map { it.label }
+            .distinct()
+            .joinToString(", ")
+        if (currentRiskPattern.isBlank() && text.isNotBlank()) {
+            currentRiskPattern = when {
+                text.contains("계좌", ignoreCase = true) -> "계좌번호 관련 문맥"
+                text.contains("비밀번호", ignoreCase = true) ||
+                    text.contains("인증번호", ignoreCase = true) ||
+                    text.contains("OTP", ignoreCase = true) -> "인증정보 관련 문맥"
+                else -> ""
+            }
+        }
         if (realtimeSession.draftChanged(text)) realtimeClient.clearPendingDraft()
         draftSession.textChanged(text)
         val result = if (enabled && appEnabled && !sensitiveField) {
             draftSession.latchRisk(RiskAnalyzer.analyze(text.takeLast(240)))
         } else RiskResult(RiskLevel.SAFE, "보호 기능 꺼짐", "")
         applyRisk(result)
-        DetectionStore.record(this, result)
+        DetectionStore.record(this, result, text, activeAppPackage)
         if (shouldRequestAnalysis(enabled, appEnabled, sensitiveField, text, realtimeSession.lastSentText)) {
             scheduleRealtimeAnalysis(text, result)
         }
@@ -491,7 +505,7 @@ class NativeKeyboardService : InputMethodService() {
             }
         }
         applyRisk(remote.result)
-        DetectionStore.record(this, remote.result)
+        DetectionStore.record(this, remote.result, realtimeSession.lastSentText, activeAppPackage)
     }
 
     private fun stopRealtimeSession() {
@@ -554,7 +568,7 @@ class NativeKeyboardService : InputMethodService() {
                         }
                     }
                     applyRisk(effectiveRemote.result)
-                    DetectionStore.record(this, effectiveRemote.result)
+                    DetectionStore.record(this, effectiveRemote.result, text, activeAppPackage)
                     completion?.invoke(effectiveRemote)
                 }.onFailure {
                     // Preserve the last known conversation state on timeout, cancellation, or failure.
@@ -627,13 +641,22 @@ class NativeKeyboardService : InputMethodService() {
             hasDraft = currentDraftHasText,
             level = currentRiskLevel,
             appPackage = activeAppPackage,
-            updatedAt = System.currentTimeMillis()
+            updatedAt = System.currentTimeMillis(),
+            pattern = currentRiskPattern,
+            inputPreview = KeyBackApi.maskSensitive(
+                currentInputConnection?.getTextBeforeCursor(1000, 0)?.toString().orEmpty()
+            )
         ))
         sendBroadcast(Intent(RiskGuardContract.ACTION_RISK_STATE).apply {
             setPackage(packageName)
             putExtra(RiskGuardContract.EXTRA_DANGER, currentRiskLevel != RiskLevel.SAFE)
             putExtra(RiskGuardContract.EXTRA_HAS_DRAFT, currentDraftHasText)
             putExtra(RiskGuardContract.EXTRA_RISK_LEVEL, currentRiskLevel.name)
+            putExtra(RiskGuardContract.EXTRA_RISK_PATTERN, currentRiskPattern)
+            putExtra(
+                RiskGuardContract.EXTRA_INPUT_PREVIEW,
+                KeyBackApi.maskSensitive(currentInputConnection?.getTextBeforeCursor(1000, 0)?.toString().orEmpty())
+            )
             putExtra(RiskGuardContract.EXTRA_APP_PACKAGE, activeAppPackage)
             putExtra(RiskGuardContract.EXTRA_DRAFT_ID, draftSession.messageId)
         })
@@ -646,6 +669,9 @@ class NativeKeyboardService : InputMethodService() {
         debounceRunnable = null
         val remote = remoteAnalysis?.takeIf { remoteAnalysisText == text }
         val result = remote?.result ?: local
+        if (result.level != RiskLevel.SAFE) {
+            DetectionStore.recordSendAttempt(this, result, currentRiskPattern, text, activeAppPackage)
+        }
         if (conversationStates.current(activeConversationId) == ConversationStatus.CONFIRMED ||
             result.level == RiskLevel.DANGER) {
             showRiskConfirmation(connection, result)
@@ -789,6 +815,7 @@ class NativeKeyboardService : InputMethodService() {
         }
         currentDraftHasText = false
         currentRiskLevel = RiskLevel.SAFE
+        currentRiskPattern = ""
         sendRiskState(false)
         val editorAction = currentInputEditorInfo?.imeOptions
             ?.and(EditorInfo.IME_MASK_ACTION)

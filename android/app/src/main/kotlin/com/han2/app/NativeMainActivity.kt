@@ -495,8 +495,15 @@ class NativeMainActivity : AppCompatActivity() {
                                 LinearLayout.LayoutParams(0, wrap, 1f))
                             addView(label(formatter.format(Date(report.detectedAt)), 11f, muted))
                         })
-                        addView(label(report.title, 15f, navy, true).apply { setPadding(0, dp(5), 0, dp(3)) })
+                        addView(label(
+                            "${if (report.sendAttempt) "전송 시도" else "입력 감지"} · ${report.pattern}",
+                            13f,
+                            if (report.sendAttempt) Color.rgb(184, 52, 60) else muted,
+                            true
+                        ).apply { setPadding(0, dp(5), 0, dp(3)) })
+                        addView(label(report.title, 15f, navy, true).apply { setPadding(0, 0, 0, dp(3)) })
                         addView(label(report.reason, 12f, Color.rgb(91, 99, 115)))
+                        setOnClickListener { showReportDetails(report) }
                     })
                     addView(space(8))
                 }
@@ -516,6 +523,45 @@ class NativeMainActivity : AppCompatActivity() {
             }
         }
         dialog.show()
+    }
+
+    private fun showReportDetails(report: DetectionReport) {
+        val formatter = SimpleDateFormat("yyyy년 M월 d일 HH:mm:ss", Locale.KOREA)
+        val details = vertical().apply {
+            setPadding(dp(20), dp(4), dp(20), dp(8))
+            addView(label("감지 시각", 12f, muted, true))
+            addView(label(formatter.format(Date(report.detectedAt)), 15f, navy).apply {
+                setPadding(0, dp(3), 0, dp(14))
+            })
+            addView(label("감지 단계", 12f, muted, true))
+            addView(label(
+                "${if (report.sendAttempt) "전송 시도" else "입력 중 감지"} · ${report.level.name}",
+                15f,
+                if (report.level == RiskLevel.DANGER) Color.rgb(184, 52, 60) else Color.rgb(164, 101, 24),
+                true
+            ).apply { setPadding(0, dp(3), 0, dp(14)) })
+            addView(label("탐지 패턴", 12f, muted, true))
+            addView(label(report.pattern, 15f, navy, true).apply {
+                setPadding(0, dp(3), 0, dp(14))
+            })
+            addView(label("입력 정보 (민감정보 마스킹)", 12f, muted, true))
+            addView(label(
+                report.inputPreview.ifBlank { "저장된 입력 미리보기가 없습니다." },
+                15f,
+                navy
+            ).apply { setPadding(0, dp(3), 0, dp(14)) })
+            addView(label("판정 이유", 12f, muted, true))
+            addView(label(report.reason, 15f, navy))
+            if (report.appPackage.isNotBlank()) {
+                addView(label("감지 앱", 12f, muted, true).apply { setPadding(0, dp(14), 0, dp(0)) })
+                addView(label(report.appPackage, 13f, navy))
+            }
+        }
+        AlertDialog.Builder(this)
+            .setTitle("위험 감지 상세")
+            .setView(ScrollView(this).apply { addView(details) })
+            .setPositiveButton("닫기", null)
+            .show()
     }
 
     private fun showRemoteDetectionReport() {

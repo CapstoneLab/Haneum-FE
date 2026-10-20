@@ -10,13 +10,19 @@ class PrivacyDetectorTest {
 
     @Test fun detectsEmail() = assertType("test@example.com", PrivacyType.EMAIL)
     @Test fun detectsPhone() = assertType("010-1234-5678", PrivacyType.PHONE)
-    @Test fun detectsResidentIdShape() = assertType("900101-1234567", PrivacyType.RESIDENT_ID)
-    @Test fun detectsCardShape() = assertType("1234 5678 9012 3456", PrivacyType.CARD)
+    @Test fun detectsResidentIdShape() = assertType("900101-1234568", PrivacyType.RESIDENT_ID)
+    @Test fun detectsCardShape() = assertType("4532 0151 1283 0366", PrivacyType.CARD)
     @Test fun detectsAccountWithContext() = assertType("계좌 123-456-789012", PrivacyType.ACCOUNT)
 
     @Test
     fun ordinarySentenceIsSafe() {
         assertFalse(detector.detect("내일 세 시에 만나요").suspected)
+    }
+
+    @Test
+    fun rejectsNumbersThatOnlyLookLikeSensitiveValues() {
+        assertFalse(detector.detect("900101-1234567").suspected)
+        assertFalse(detector.detect("1234 5678 9012 3456").suspected)
     }
 
     private fun assertType(text: String, type: PrivacyType) {

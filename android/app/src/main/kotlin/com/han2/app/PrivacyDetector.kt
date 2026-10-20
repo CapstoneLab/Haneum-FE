@@ -32,7 +32,39 @@ class RegexPrivacyDetector : PrivacyDetector {
     override fun detect(text: CharSequence): PrivacyScanResult {
         val value = text.toString()
         return PrivacyScanResult(rules.flatMap { rule ->
-            rule.regex.findAll(value).map { PrivacyFinding(rule.type, it.range, rule.label) }.toList()
+            rule.regex.findAll(value).mapNotNull { match: MatchResult ->
+                val valid = when (rule.type) {
+                    PrivacyType.RESIDENT_ID -> isValidResidentId(match.value)
+                    PrivacyType.CARD -> isValidCardNumber(match.value)
+                    else -> true
+                }
+                if (valid) PrivacyFinding(rule.type, match.range, rule.label) else null
+            }.toList()
         })
+    }
+
+    private fun isValidResidentId(value: String): Boolean {
+        val digits = value.filter(Char::isDigit)
+        if (digits.length != 13) return false
+        val weights = intArrayOf(2, 3, 4, 5, 6, 7, 8, 9, 2, 3, 4, 5)
+        val checksum = (0 until 12).sumOf { digits[it].digitToInt() * weights[it] }
+        return (11 - checksum % 11) % 10 == digits[12].digitToInt()
+    }
+
+    private fun isValidCardNumber(value: String): Boolean {
+        val digits = value.filter(Char::isDigit)
+        if (digits.length !in 16..19) return false
+        var sum = 0
+        var double = false
+        for (index in digits.lastIndex downTo 0) {
+            var digit = digits[index].digitToInt()
+            if (double) {
+                digit *= 2
+                if (digit > 9) digit -= 9
+            }
+            sum += digit
+            double = !double
+        }
+        return sum % 10 == 0
     }
 }

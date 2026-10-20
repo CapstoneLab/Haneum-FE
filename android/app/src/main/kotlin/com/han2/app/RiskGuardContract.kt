@@ -12,6 +12,8 @@ object RiskGuardContract {
     const val EXTRA_RISK_LEVEL = "risk_level"
     const val EXTRA_APP_PACKAGE = "app_package"
     const val EXTRA_DRAFT_ID = "draft_id"
+    const val EXTRA_RISK_PATTERN = "risk_pattern"
+    const val EXTRA_INPUT_PREVIEW = "input_preview"
     const val EXTRA_HAS_EXTERNAL_SEND = "has_external_send"
     const val EXTRA_SOURCE = "source"
     const val SOURCE_KEYBOARD = "keyboard"

@@ -28,6 +28,8 @@ import android.widget.TextView
 class RiskSendGuardService : AccessibilityService() {
     private var riskActive = false
     private var currentRiskLevel = RiskLevel.SAFE
+    private var currentRiskPattern = ""
+    private var currentInputPreview = ""
     private var monitoringActive = false
     private var monitoredPackage = ""
     private var blocker: View? = null
@@ -69,6 +71,10 @@ class RiskSendGuardService : AccessibilityService() {
                     currentRiskLevel = runCatching {
                         RiskLevel.valueOf(intent.getStringExtra(RiskGuardContract.EXTRA_RISK_LEVEL).orEmpty())
                     }.getOrElse { RiskStateStore.read(this@RiskSendGuardService).level }
+                    currentRiskPattern = intent.getStringExtra(RiskGuardContract.EXTRA_RISK_PATTERN)
+                        ?: RiskStateStore.read(this@RiskSendGuardService).pattern
+                    currentInputPreview = intent.getStringExtra(RiskGuardContract.EXTRA_INPUT_PREVIEW)
+                        ?: RiskStateStore.read(this@RiskSendGuardService).inputPreview
                     riskActive = currentRiskLevel != RiskLevel.SAFE
                     monitoredPackage = intent.getStringExtra(RiskGuardContract.EXTRA_APP_PACKAGE)
                         ?: RiskStateStore.read(this@RiskSendGuardService).appPackage
@@ -204,9 +210,27 @@ class RiskSendGuardService : AccessibilityService() {
                     pendingSendNode = AccessibilityNodeInfo.obtain(currentNode)
                     pendingSendBounds = Rect(blockerBounds)
                     when (currentRiskLevel) {
-                        RiskLevel.DANGER -> showConfirmationOverlay(RiskGuardContract.SOURCE_ACCESSIBILITY)
+                        RiskLevel.DANGER -> {
+                            DetectionStore.recordSendAttempt(
+                                this@RiskSendGuardService,
+                                RiskResult(RiskLevel.DANGER, "민감정보가 감지되었습니다.", "전송 시도 시 위험정보가 감지되었습니다."),
+                                currentRiskPattern,
+                                currentInputPreview,
+                                monitoredPackage
+                            )
+                            showConfirmationOverlay(RiskGuardContract.SOURCE_ACCESSIBILITY)
+                        }
                         RiskLevel.SAFE -> approveAndSend()
-                        RiskLevel.WARNING -> removeBlocker()
+                        RiskLevel.WARNING -> {
+                            DetectionStore.recordSendAttempt(
+                                this@RiskSendGuardService,
+                                RiskResult(RiskLevel.WARNING, "주의가 필요한 입력이에요", "전송 시도 시 위험 가능성이 감지되었습니다."),
+                                currentRiskPattern,
+                                currentInputPreview,
+                                monitoredPackage
+                            )
+                            removeBlocker()
+                        }
                     }
                 }
                 true

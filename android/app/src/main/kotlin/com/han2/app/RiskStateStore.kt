@@ -6,7 +6,9 @@ data class SharedRiskState(
     val hasDraft: Boolean,
     val level: RiskLevel,
     val appPackage: String,
-    val updatedAt: Long
+    val updatedAt: Long,
+    val pattern: String = "",
+    val inputPreview: String = ""
 )
 
 /** Stores metadata only. The user's draft text never leaves the IME process. */
@@ -18,6 +20,8 @@ object RiskStateStore {
             .putBoolean(KeyboardPreferences.HAS_DRAFT, state.hasDraft)
             .putString(KeyboardPreferences.RISK_LEVEL, state.level.name)
             .putString(KeyboardPreferences.RISK_APP_PACKAGE, state.appPackage)
+            .putString("han2_risk_pattern", state.pattern)
+            .putString("han2_risk_input_preview", state.inputPreview)
             .putLong(KeyboardPreferences.RISK_UPDATED_AT, state.updatedAt)
             .commit()
     }
@@ -32,7 +36,9 @@ object RiskStateStore {
             prefs.getBoolean(KeyboardPreferences.HAS_DRAFT, false),
             level,
             prefs.getString(KeyboardPreferences.RISK_APP_PACKAGE, "").orEmpty(),
-            prefs.getLong(KeyboardPreferences.RISK_UPDATED_AT, 0L)
+            prefs.getLong(KeyboardPreferences.RISK_UPDATED_AT, 0L),
+            prefs.getString("han2_risk_pattern", "").orEmpty(),
+            prefs.getString("han2_risk_input_preview", "").orEmpty()
         )
     }
 }

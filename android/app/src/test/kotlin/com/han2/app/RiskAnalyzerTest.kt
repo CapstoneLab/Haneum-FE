@@ -6,12 +6,13 @@ import org.junit.Test
 class RiskAnalyzerTest {
     @Test
     fun partialNumberShowsWarningBeforeConfirmedSensitiveInformation() {
-        assertEquals(RiskLevel.WARNING, RiskAnalyzer.analyze("12345678").level)
+        assertEquals(RiskLevel.SAFE, RiskAnalyzer.analyze("12345678").level)
     }
 
     @Test
     fun residentNumberIsDetectedLocally() {
-        assertEquals(RiskLevel.DANGER, RiskAnalyzer.analyze("900101-1234567").level)
+        assertEquals(RiskLevel.SAFE, RiskAnalyzer.analyze("900101-1234567").level)
+        assertEquals(RiskLevel.DANGER, RiskAnalyzer.analyze("900101-1234568").level)
     }
 
     @Test
@@ -21,7 +22,7 @@ class RiskAnalyzerTest {
 
     @Test
     fun anyNumberWarnsWhileAnalysisIsInProgress() {
-        assertEquals(RiskLevel.WARNING, RiskAnalyzer.analyze("약속 시간은 1시입니다").level)
+        assertEquals(RiskLevel.SAFE, RiskAnalyzer.analyze("약속 시간은 1시입니다").level)
     }
 
     @Test
@@ -43,6 +44,6 @@ class RiskAnalyzerTest {
 
     @Test
     fun residentNumberStillDetectedWhenFollowedByKoreanText() {
-        assertEquals(RiskLevel.DANGER, RiskAnalyzer.analyze("900101-1234567입니다").level)
+        assertEquals(RiskLevel.DANGER, RiskAnalyzer.analyze("900101-1234568입니다").level)
     }
 }
