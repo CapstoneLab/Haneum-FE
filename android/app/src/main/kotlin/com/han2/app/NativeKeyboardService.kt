@@ -39,6 +39,7 @@ import java.util.UUID
 class NativeKeyboardService : InputMethodService() {
     private lateinit var root: LinearLayout
     private lateinit var status: TextView
+    private var suggestionRow: LinearLayout? = null
     private var korean = true
     private var shifted = false
     private var symbols = false
@@ -207,6 +208,8 @@ class NativeKeyboardService : InputMethodService() {
             setBackgroundColor(Color.rgb(229, 248, 238))
         }
         root.addView(status, LinearLayout.LayoutParams(-1, LinearLayout.LayoutParams.WRAP_CONTENT))
+        suggestionRow = buildSuggestionRow()
+        suggestionRow?.let { root.addView(it) }
         addRow(("1234567890").map(Char::toString))
         if (symbols) {
             addRow(listOf("+", "×", "÷", "=", "/", "_", "<", ">", "[", "]"))
@@ -410,7 +413,56 @@ class NativeKeyboardService : InputMethodService() {
                 }
             }
         }
-        if (key !in setOf("전송", IME_ACTION_KEY)) analyze(connection)
+        if (key !in setOf("전송", IME_ACTION_KEY)) {
+            analyze(connection)
+            refreshSuggestions(connection)
+        }
+    }
+
+    private fun buildSuggestionRow(): LinearLayout? {
+        val preferences = keyboardPreferences()
+        if (!preferences.getBoolean(KeyboardPreferences.SUGGESTIONS, true) || sensitiveField || symbols) {
+            return null
+        }
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(6), dp(2), dp(6), dp(2))
+            refreshSuggestionButtons(this, currentInputConnection?.getTextBeforeCursor(1000, 0)?.toString().orEmpty())
+        }
+    }
+
+    private fun refreshSuggestions(connection: InputConnection) {
+        val row = suggestionRow ?: return
+        val enabled = keyboardPreferences().getBoolean(KeyboardPreferences.SUGGESTIONS, true)
+        row.visibility = if (enabled && !sensitiveField && !symbols) View.VISIBLE else View.GONE
+        if (row.visibility != View.VISIBLE) return
+        refreshSuggestionButtons(row, connection.getTextBeforeCursor(1000, 0)?.toString().orEmpty())
+    }
+
+    private fun refreshSuggestionButtons(row: LinearLayout, text: String) {
+        row.removeAllViews()
+        KeyboardSuggestions.forText(text).forEach { suggestion ->
+            row.addView(TextView(this).apply {
+                this.text = suggestion
+                textSize = 13f
+                gravity = Gravity.CENTER
+                setTextColor(Color.rgb(226, 230, 240))
+                background = roundedKey(Color.rgb(55, 55, 61))
+                contentDescription = "추천 문장 $suggestion"
+                setPadding(dp(10), dp(6), dp(10), dp(6))
+                setOnClickListener {
+                    val connection = currentInputConnection ?: return@setOnClickListener
+                    val before = connection.getTextBeforeCursor(1000, 0)?.toString().orEmpty()
+                    val prefix = if (before.isNotEmpty() && !before.last().isWhitespace()) " " else ""
+                    connection.commitText(prefix + suggestion, 1)
+                    analyze(connection)
+                    refreshSuggestions(connection)
+                }
+            }, LinearLayout.LayoutParams(0, dp(34), 1f).apply {
+                setMargins(dp(3), dp(2), dp(3), dp(2))
+            })
+        }
     }
 
     private fun analyze(connection: InputConnection): RiskResult {

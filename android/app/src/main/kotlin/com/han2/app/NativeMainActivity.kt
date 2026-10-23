@@ -2,6 +2,7 @@ package com.han2.app
 
 import android.content.Intent
 import android.content.ComponentName
+import android.content.res.ColorStateList
 import android.content.pm.ApplicationInfo
 import android.graphics.Color
 import android.graphics.Typeface
@@ -361,6 +362,20 @@ class NativeMainActivity : AppCompatActivity() {
             }, LinearLayout.LayoutParams(0, wrap, 1f))
             val toggle = SwitchCompat(this@NativeMainActivity).apply {
                 isChecked = preferences.getBoolean(key, default)
+                thumbTintList = ColorStateList(
+                    arrayOf(
+                        intArrayOf(android.R.attr.state_checked),
+                        intArrayOf(-android.R.attr.state_checked)
+                    ),
+                    intArrayOf(Color.rgb(54, 174, 119), Color.rgb(188, 190, 194))
+                )
+                trackTintList = ColorStateList(
+                    arrayOf(
+                        intArrayOf(android.R.attr.state_checked),
+                        intArrayOf(-android.R.attr.state_checked)
+                    ),
+                    intArrayOf(Color.rgb(181, 231, 207), Color.rgb(226, 227, 230))
+                )
                 setOnCheckedChangeListener { _, checked ->
                     preferences.edit().putBoolean(key, checked).apply()
                     if (key == KeyboardPreferences.PROTECTION) {
