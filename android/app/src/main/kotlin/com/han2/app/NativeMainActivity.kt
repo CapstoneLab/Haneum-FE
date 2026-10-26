@@ -161,7 +161,7 @@ class NativeMainActivity : AppCompatActivity() {
             showAppInfo()
         })
         content.addView(space(12))
-        content.addView(clickableCard("▤", "보고서 확인", "감지된 위험과 판단 이유를 확인하세요") {
+        content.addView(clickableCard("▤", "로그 확인", "감지된 위험과 판단 이유를 확인하세요") {
             showDetectionReport()
         }.apply { background = rounded(Color.rgb(51, 59, 78), 16f) })
         content.addView(label("설정은 이 기기에 안전하게 저장됩니다.", 12f, muted).apply {
@@ -527,10 +527,10 @@ class NativeMainActivity : AppCompatActivity() {
         addView(icon(symbol, Color.rgb(132, 145, 165), Color.WHITE))
         addView(vertical().apply {
             setPadding(dp(12), 0, dp(6), 0)
-            addView(label(title, 16f, if (title == "보고서 확인") Color.WHITE else navy, true))
-            addView(label(description, 12f, if (title == "보고서 확인") Color.rgb(199, 204, 218) else muted))
+            addView(label(title, 16f, if (title == "로그 확인") Color.WHITE else navy, true))
+            addView(label(description, 12f, if (title == "로그 확인") Color.rgb(199, 204, 218) else muted))
         }, LinearLayout.LayoutParams(0, wrap, 1f))
-        addView(navigationArrow(if (title == "보고서 확인") Color.WHITE else muted))
+        addView(navigationArrow(if (title == "로그 확인") Color.WHITE else muted))
         setOnClickListener { action() }
     }
 
@@ -596,7 +596,7 @@ class NativeMainActivity : AppCompatActivity() {
         }
         val scroll = ScrollView(this).apply { addView(list) }
         val dialog = AlertDialog.Builder(this)
-            .setTitle("보고서 확인")
+            .setTitle("로그 확인")
             .setView(scroll)
             .setNegativeButton("닫기", null)
             .apply { if (reports.isNotEmpty()) setPositiveButton("기록 비우기", null) }
@@ -655,7 +655,7 @@ class NativeMainActivity : AppCompatActivity() {
             addView(label("서버 기록을 불러오는 중…", 14f, muted))
         }
         val dialog = AlertDialog.Builder(this)
-            .setTitle("KeyBack 위험 보고서")
+            .setTitle("KeyBack 위험 로그")
             .setView(ScrollView(this).apply { addView(list) })
             .setNegativeButton("닫기", null)
             .setPositiveButton("전체 삭제", null)
