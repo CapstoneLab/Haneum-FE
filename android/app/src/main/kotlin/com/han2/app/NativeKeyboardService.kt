@@ -180,7 +180,7 @@ class NativeKeyboardService : InputMethodService() {
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(1), dp(4), dp(1), dp(4))
-            setBackgroundColor(Color.BLACK)
+            setBackgroundColor(keyboardColors().background)
             setOnApplyWindowInsetsListener { view, insets ->
                 val navigationBottom = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                     insets.getInsets(WindowInsets.Type.navigationBars()).bottom
@@ -212,9 +212,10 @@ class NativeKeyboardService : InputMethodService() {
         suggestionRow?.let { root.addView(it) }
         addRow(("1234567890").map(Char::toString))
         if (symbols) {
-            addRow(listOf("+", "×", "÷", "=", "/", "_", "<", ">", "[", "]"))
-            addRow(listOf("!", "@", "#", "$", "%", "^", "&", "*", "(", ")"))
-            addRow(listOf("1/2", "-", "'", "\"", ":", ";", ",", "?", "⌫"), edgeKeys = setOf("1/2", "⌫"))
+            val rows = symbolRows()
+            rows.forEachIndexed { index, keys ->
+                addRow(keys, edgeKeys = if (index == rows.lastIndex) setOf("1/2", "⌫") else emptySet())
+            }
             addBottomRow(listOf(
                 KeySpec("ABC", 1.15f), KeySpec("한\n/영", 0.8f, "한/영"), KeySpec(",", 0.8f),
                 KeySpec("⎵", 4f, "공백"), KeySpec(".", 0.8f), KeySpec(actionKeyLabel(), 1.15f, actionKeyAction())
@@ -261,6 +262,7 @@ class NativeKeyboardService : InputMethodService() {
         ?: EditorInfo.IME_ACTION_UNSPECIFIED
 
     private fun addRow(keys: List<String>, sideInset: Float = 0f, edgeKeys: Set<String> = emptySet()) {
+        val colors = keyboardColors()
         val row = LinearLayout(this).apply { gravity = Gravity.CENTER }
         if (sideInset > 0f) row.addView(View(this), LinearLayout.LayoutParams(0, dp(52), sideInset))
         keys.forEach { key ->
@@ -269,8 +271,8 @@ class NativeKeyboardService : InputMethodService() {
                 textSize = 21f
                 gravity = Gravity.CENTER
                 setTypeface(Typeface.create("sans-serif", Typeface.NORMAL))
-                setTextColor(Color.rgb(245, 245, 248))
-                background = roundedKey(if (key in edgeKeys) Color.rgb(22, 22, 25) else Color.rgb(65, 65, 69))
+                setTextColor(colors.text)
+                background = roundedKey(if (key in edgeKeys) colors.edgeKey else colors.key)
                 bindKeyInteraction(this, key)
             }, LinearLayout.LayoutParams(0, dp(48), if (key in edgeKeys) 1.3f else 1f).apply {
                 setMargins(dp(4), dp(3), dp(4), dp(3))
@@ -283,6 +285,7 @@ class NativeKeyboardService : InputMethodService() {
     private data class KeySpec(val label: String, val weight: Float = 1f, val action: String = label)
 
     private fun addBottomRow(keys: List<KeySpec>) {
+        val colors = keyboardColors()
         val row = LinearLayout(this).apply { gravity = Gravity.CENTER }
         keys.forEach { key ->
             row.addView(TextView(this).apply {
@@ -290,14 +293,63 @@ class NativeKeyboardService : InputMethodService() {
                 textSize = if (key.label.contains('\n')) 11f else if (key.label.length > 2) 16f else 22f
                 gravity = Gravity.CENTER
                 setTypeface(Typeface.create("sans-serif", Typeface.NORMAL))
-                setTextColor(if (key.action == IME_ACTION_KEY) Color.rgb(91, 139, 255) else Color.rgb(245, 245, 248))
-                background = roundedKey(if (key.action in setOf("!#1", "ABC", "한/영", "↵", IME_ACTION_KEY)) Color.rgb(22, 22, 25) else Color.rgb(65, 65, 69))
+                setTextColor(if (key.action == IME_ACTION_KEY) colors.action else colors.text)
+                background = roundedKey(if (key.action in setOf("!#1", "ABC", "한/영", "↵", IME_ACTION_KEY)) colors.edgeKey else colors.key)
                 bindKeyInteraction(this, key.action)
             }, LinearLayout.LayoutParams(0, dp(52), key.weight).apply {
                 setMargins(dp(4), dp(3), dp(4), dp(3))
             })
         }
         root.addView(row, LinearLayout.LayoutParams(-1, dp(58)))
+    }
+
+    private data class KeyboardColors(
+        val background: Int,
+        val key: Int,
+        val edgeKey: Int,
+        val text: Int,
+        val action: Int
+    )
+
+    private fun keyboardColors(): KeyboardColors = when (
+        keyboardPreferences().getString(KeyboardPreferences.THEME, KeyboardPreferences.THEME_SYSTEM)
+    ) {
+        KeyboardPreferences.THEME_WHITE -> KeyboardColors(
+            background = Color.rgb(241, 243, 247),
+            key = Color.WHITE,
+            edgeKey = Color.rgb(219, 224, 232),
+            text = Color.rgb(38, 44, 56),
+            action = Color.rgb(65, 101, 214)
+        )
+        else -> KeyboardColors(
+            background = Color.BLACK,
+            key = Color.rgb(65, 65, 69),
+            edgeKey = Color.rgb(22, 22, 25),
+            text = Color.rgb(245, 245, 248),
+            action = Color.rgb(91, 139, 255)
+        )
+    }
+
+    private fun symbolRows(): List<List<String>> = when (
+        keyboardPreferences().getString(KeyboardPreferences.SYMBOL_LAYOUT, KeyboardPreferences.SYMBOL_STANDARD)
+    ) {
+        KeyboardPreferences.SYMBOL_CALCULATOR -> listOf(
+            listOf("(", ")", "+", "−", "×", "÷", "%", "="),
+            listOf("7", "8", "9", "/", "√", "^", "⌫"),
+            listOf("4", "5", "6", "*", "(", ")", "⌫"),
+            listOf("1/2", "1", "2", "3", "0", ".", "⌫")
+        )
+        KeyboardPreferences.SYMBOL_EMPHASIS -> listOf(
+            listOf("!", "@", "#", "$", "%", "&", "*", "⌫"),
+            listOf("(", ")", "[", "]", "{", "}", "<", ">"),
+            listOf("-", "_", "+", "=", "/", "\\", "|", "⌫"),
+            listOf("1/2", "'", "\"", ":", ";", ",", ".", "⌫")
+        )
+        else -> listOf(
+            listOf("+", "×", "÷", "=", "/", "_", "<", ">", "[", "]"),
+            listOf("!", "@", "#", "$", "%", "^", "&", "*", "(", ")"),
+            listOf("1/2", "-", "'", "\"", ":", ";", ",", "?", "⌫")
+        )
     }
 
     private fun bindKeyInteraction(view: View, key: String) {

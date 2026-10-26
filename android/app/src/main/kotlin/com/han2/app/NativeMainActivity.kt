@@ -145,9 +145,15 @@ class NativeMainActivity : AppCompatActivity() {
 
         content.addView(section("키보드 모양"))
         val appearanceCard = settingsCard()
-        appearanceCard.addView(infoRow("◉", Color.rgb(221, 103, 157), "테마", "키보드 화면 스타일", "시스템"))
+        appearanceCard.addView(infoRow(
+            "◉", Color.rgb(221, 103, 157), "테마", "키보드 화면 스타일",
+            themeLabel(preferences.getString(KeyboardPreferences.THEME, KeyboardPreferences.THEME_SYSTEM))
+        ) { chooseTheme() })
         appearanceCard.addView(divider())
-        appearanceCard.addView(infoRow("#", Color.rgb(135, 148, 169), "숫자·기호", "키보드의 ?123 키로 전환", "표준 배열"))
+        appearanceCard.addView(infoRow(
+            "#", Color.rgb(135, 148, 169), "숫자·기호", "키보드의 ?123 키로 전환",
+            symbolLayoutLabel(preferences.getString(KeyboardPreferences.SYMBOL_LAYOUT, KeyboardPreferences.SYMBOL_STANDARD))
+        ) { chooseSymbolLayout() })
         content.addView(appearanceCard)
 
         content.addView(space(14))
@@ -438,7 +444,14 @@ class NativeMainActivity : AppCompatActivity() {
         }
     }
 
-    private fun infoRow(symbol: String, color: Int, title: String, description: String, value: String): View = horizontal().apply {
+    private fun infoRow(
+        symbol: String,
+        color: Int,
+        title: String,
+        description: String,
+        value: String,
+        action: (() -> Unit)? = null
+    ): View = horizontal().apply {
         gravity = Gravity.CENTER_VERTICAL
         setPadding(dp(12), dp(13), dp(12), dp(13))
         addView(icon(symbol, color, Color.WHITE))
@@ -448,6 +461,63 @@ class NativeMainActivity : AppCompatActivity() {
             addView(label(description, 12f, muted))
         }, LinearLayout.LayoutParams(0, wrap, 1f))
         addView(label(value, 13f, purple, true))
+        if (action != null) {
+            isClickable = true
+            setOnClickListener { action() }
+        }
+    }
+
+    private fun chooseTheme() {
+        val values = listOf(
+            KeyboardPreferences.THEME_SYSTEM,
+            KeyboardPreferences.THEME_WHITE,
+            KeyboardPreferences.THEME_DARK
+        )
+        val selected = values.indexOf(preferences.getString(KeyboardPreferences.THEME, KeyboardPreferences.THEME_SYSTEM))
+            .coerceAtLeast(0)
+        AlertDialog.Builder(this)
+            .setTitle("키보드 테마")
+            .setSingleChoiceItems(values.map(::themeLabel).toTypedArray(), selected) { dialog, which ->
+                preferences.edit().putString(KeyboardPreferences.THEME, values[which]).apply()
+                dialog.dismiss()
+                buildScreen()
+                syncSettingsFromBackend()
+            }
+            .setNegativeButton("취소", null)
+            .show()
+    }
+
+    private fun chooseSymbolLayout() {
+        val values = listOf(
+            KeyboardPreferences.SYMBOL_STANDARD,
+            KeyboardPreferences.SYMBOL_CALCULATOR,
+            KeyboardPreferences.SYMBOL_EMPHASIS
+        )
+        val selected = values.indexOf(
+            preferences.getString(KeyboardPreferences.SYMBOL_LAYOUT, KeyboardPreferences.SYMBOL_STANDARD)
+        ).coerceAtLeast(0)
+        AlertDialog.Builder(this)
+            .setTitle("숫자·기호 배열")
+            .setSingleChoiceItems(values.map(::symbolLayoutLabel).toTypedArray(), selected) { dialog, which ->
+                preferences.edit().putString(KeyboardPreferences.SYMBOL_LAYOUT, values[which]).apply()
+                dialog.dismiss()
+                buildScreen()
+                syncSettingsFromBackend()
+            }
+            .setNegativeButton("취소", null)
+            .show()
+    }
+
+    private fun themeLabel(value: String?): String = when (value) {
+        KeyboardPreferences.THEME_WHITE -> "화이트"
+        KeyboardPreferences.THEME_DARK -> "다크"
+        else -> "시스템"
+    }
+
+    private fun symbolLayoutLabel(value: String?): String = when (value) {
+        KeyboardPreferences.SYMBOL_CALCULATOR -> "계산기형"
+        KeyboardPreferences.SYMBOL_EMPHASIS -> "기호 강조형"
+        else -> "표준 배열"
     }
 
     private fun clickableCard(symbol: String, title: String, description: String, action: () -> Unit): View = horizontal().apply {
